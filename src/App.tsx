@@ -147,11 +147,11 @@ export default function App() {
                 if (completed) return;
                 const dist = getDistance(p.lat, p.lng, stop.lat, stop.lng);
                 
-                if (dist <= 50) {
+                if (dist <= 30) {
                     if (arrivalTs === null) {
                         arrivalTs = p.ts;
                     }
-                } else if (arrivalTs !== null && dist > 75) {
+                } else if (arrivalTs !== null && dist > 55) {
                     departureTs = p.ts;
                     completed = true;
                 }

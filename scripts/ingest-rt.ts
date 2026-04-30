@@ -8,7 +8,7 @@ import 'dotenv/config';
 // --- Konfiguration ---
 const API_ENDPOINT = 'https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/VehiclePositionsSweden.pb';
 const INTERVAL_MS = 2000;
-const STOP_RADIUS = 50;
+const STOP_RADIUS = 30;
 const STOPPED_SPEED_THRESHOLD = 5;
 
 // Sökvägar för loggfiler
