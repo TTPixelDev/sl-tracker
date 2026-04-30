@@ -176,7 +176,6 @@ async function processGTFS() {
         const tripOps: any[] = [];
         const usedStopIdsForDb = new Set<string>();
 
-        // Fix missing headsigns before saving
         for (const trip of tripsProcessed.values()) {
             trip.stops.sort((a, b) => a.seq - b.seq);
             if (!trip.destinationName && trip.stops.length > 0) {
@@ -273,7 +272,6 @@ async function processGTFS() {
             await db.collection("routes").insertMany(manifest);
         }
 
-        // --- SKAPA route-directions.json and trip-to-route.json ---
         console.log('Skapar realtidsmappning (route-directions.json & trip-to-route.json)...');
         const routeDirectionStats: any = {};
         const tripToRouteIdJson: any = {};
@@ -285,7 +283,6 @@ async function processGTFS() {
             };
         }
 
-        // Läs direction_id en gång till
         await streamCsvFromEntry(entries.get('trips.txt'), (row) => {
             if (validRouteIds.has(row.route_id)) {
                 const dir = row.direction_id;
@@ -335,7 +332,6 @@ async function processGTFS() {
         try {
             await zipfile.close();
         } catch (e) {
-            // Ignorera close-fel
         }
         await client.close();
     }

@@ -139,7 +139,7 @@ async function runIngest() {
                                 },
                                 upsert: true
                             }
-                        }); // Correctly missing comma or similar is fine here
+                        });
 
                         if (!activeTracking.has(tripId)) {
                             const tripDoc = await tripsCollection.findOne({ _id: tripId as any });

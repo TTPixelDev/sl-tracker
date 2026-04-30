@@ -5,7 +5,6 @@ import { MongoClient } from "mongodb";
 const app = express();
 app.use(express.json());
 
-// MongoDB Client Setup
 let mongoClient: MongoClient | null = null;
 if (process.env.MONGODB_URI) {
   mongoClient = new MongoClient(process.env.MONGODB_URI);
@@ -19,7 +18,6 @@ const getDb = (dbName: string) => {
   return mongoClient.db(dbName);
 };
 
-// APIs from Project 1
 app.get("/api/gtfs-rt", async (req, res) => {
   try {
     const apiKey = process.env.RT_API_KEY;
@@ -83,7 +81,6 @@ app.get("/api/trip-history", async (req, res) => {
   }
 });
 
-// APIs from Project 2
 app.get("/api/status", async (req, res) => {
   try {
     const db = getDb("sl-times");
@@ -209,7 +206,6 @@ app.get("/api/history", async (req, res) => {
       stopped: e.st, scheduledDepartureMinutes: e.sdm
     }));
 
-    // backfill missing names
     for (const ev of events) {
       if (!ev.destinationName) {
          const tr = await db.collection("trips").findOne({ _id: ev.tripId }, { projection: { destinationName: 1 } });
