@@ -1,0 +1,6 @@
+{
+  "name": "SL Tracker",
+  "description": "Appen kombinerar realtids live-spårning för SL & WAAB med historiska avgångs-/ankomsttider.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
