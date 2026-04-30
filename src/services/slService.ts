@@ -24,6 +24,7 @@ class SLService {
   private rtRoot: any = null;
   private tripToRouteMap: Record<string, {r: string; h?: string}> | null = null;
   private routeDirections: any | null = null;
+  private contractorsMap: Map<string, string> = new Map();
   private stopsMap: Map<string, string> = new Map();
   private manifest: LineManifestEntry[] = [];
 
@@ -64,12 +65,25 @@ class SLService {
 
   private async loadHelperMaps() {
     try {
-        const tripRes = await fetch(`/data/trip-to-route.json?v=${Date.now()}`);
+        const [tripRes, dirRes, contrRes] = await Promise.all([
+            fetch(`/data/trip-to-route.json?v=${Date.now()}`),
+            fetch(`/data/route-directions.json?v=${Date.now()}`),
+            fetch(`/api/contractors`)
+        ]);
+
         if (tripRes.ok) this.tripToRouteMap = await tripRes.json();
-        
-        const dirRes = await fetch(`/data/route-directions.json?v=${Date.now()}`);
-        if (dirRes.ok) {
-            this.routeDirections = await dirRes.json();
+        if (dirRes.ok) this.routeDirections = await dirRes.json();
+        if (contrRes.ok) {
+            const data = await contrRes.json();
+            Object.values(data).forEach((modeArray: any) => {
+                if (Array.isArray(modeArray)) {
+                    modeArray.forEach((line: any) => {
+                        if (line.designation && line.contractor?.name) {
+                            this.contractorsMap.set(line.designation, line.contractor.name);
+                        }
+                    });
+                }
+            });
         }
     } catch(e) { console.warn("Kunde inte ladda hjälpkartor:", e); }
   }
@@ -158,6 +172,15 @@ class SLService {
     });
   }
 
+  async getLineContractor(designation: string): Promise<string> {
+    await this.initialize();
+    return this.contractorsMap.get(designation) || "Okänd";
+  }
+
+  getLineContractorSync(designation: string): string | undefined {
+    return this.contractorsMap.get(designation);
+  }
+
   async getLineStops(lineId: string): Promise<SLStop[]> {
     try {
       const res = await fetch(`/api/line-stops?lineId=${lineId}`);
@@ -177,7 +200,7 @@ class SLService {
         if (!res.ok) return null;
         return await res.json();
     } catch(e){
-        return null;
+        return null; // Handle if json doesn't exist
     }
   }
 
@@ -306,10 +329,16 @@ class SLService {
   }
 
   async getVehicleHistory(tripId: string): Promise<HistoryPoint[]> {
-      const res = await fetch(`/api/trip-history?tripId=${tripId}`);
+      const res = await fetch(`/api/trip-history?tripId=${tripId}&t=${Date.now()}`);
       if (!res.ok) return [];
       const data = await res.json();
       return data.path || [];
+  }
+
+  async getTripEvents(tripId: string): Promise<any[]> {
+      const res = await fetch(`/api/trip-events?tripId=${tripId}&t=${Date.now()}`);
+      if (!res.ok) return [];
+      return await res.json();
   }
 
   private async getRTRoot() {

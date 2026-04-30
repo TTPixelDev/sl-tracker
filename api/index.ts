@@ -50,6 +50,25 @@ app.get("/api/trip-updates", async (req, res) => {
   }
 });
 
+app.get("/api/trip-events", async (req, res) => {
+  try {
+    const { tripId } = req.query;
+    if (!tripId || typeof tripId !== "string") return res.status(400).json({ error: "Missing tripId" });
+    const db = getDb("sl-times");
+    const events = await db.collection("stop_events").find({ t: tripId }).toArray();
+    res.status(200).json(events.map(e => ({
+      stopId: e.s,
+      stopped: e.st,
+      actualArrival: e.aa,
+      actualDeparture: e.ad,
+      scheduledDeparture: e.sd,
+      scheduledArrival: e.sa
+    })));
+  } catch (e: any) {
+    res.status(200).json([]);
+  }
+});
+
 app.get("/api/trip-history", async (req, res) => {
   try {
     const { tripId } = req.query;
@@ -127,6 +146,23 @@ app.get("/api/line-stops", async (req, res) => {
     return res.status(200).json({ stops: stops.sort((a,b) => a.name.localeCompare(b.name)) });
   } catch (e) {
     res.status(500).json({ error: "Fail" });
+  }
+});
+
+app.get("/api/contractors", async (req, res) => {
+  try {
+    const response = await fetch('https://transport.integration.sl.se/v1/lines?transport_authority_id=1');
+    if (!response.ok) throw new Error(response.statusText);
+
+    let text = await response.text();
+    text = text.replace(/"gid":\s*([0-9]+)/g, '"gid": "$1"');
+    const data = JSON.parse(text);
+
+    res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=172800');
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("Contractor fetch error:", error);
+    return res.status(500).json({ error: 'Failed to fetch contractor data' });
   }
 });
 

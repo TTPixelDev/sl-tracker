@@ -56,6 +56,27 @@ const getDiff = (scheduled: string, actual: string | null) => {
   return { text: `${sign}${mins}m ${secs}s`, color: diffSecs > 0 ? 'text-red-500' : 'text-blue-500' };
 };
 
+const getDuration = (arrival: string | null, departure: string | null) => {
+  if (!arrival || !departure) return null;
+  const toSec = (t: string) => {
+    const parts = t.split(':').map(Number);
+    const h = parts[0] >= 24 ? parts[0] - 24 : parts[0];
+    const m = parts[1] || 0;
+    const s = parts[2] || 0;
+    return h * 3600 + m * 60 + s;
+  };
+  let diffSecs = toSec(departure) - toSec(arrival);
+  if (diffSecs < -43200) diffSecs += 86400; 
+  if (diffSecs < 0) return { text: '0s' }; 
+  
+  if (diffSecs < 60) {
+    return { text: `${diffSecs}s` };
+  }
+  const mins = Math.floor(diffSecs / 60);
+  const secs = diffSecs % 60;
+  return { text: `${mins}m ${secs}s` };
+};
+
 export default function HistoryView() {
   const [date, setDate] = useState(() => {
     const d = new Date();
@@ -302,6 +323,7 @@ const EventCard: React.FC<{ event: StopEvent, lineName: string }> = ({ event, li
   const colorHex = getLineColor(lineName, event.agency);
   const lineNumber = lineName.replace('Linje ', '').trim();
   const diff = getDiff(event.scheduledDeparture, event.actualDeparture);
+  const stopDuration = getDuration(event.actualArrival, event.actualDeparture);
   const isDelayed = diff && diff.text.startsWith('+');
 
   const isStopped = (() => {
@@ -313,7 +335,7 @@ const EventCard: React.FC<{ event: StopEvent, lineName: string }> = ({ event, li
     };
     let duration = toSec(event.actualDeparture) - toSec(event.actualArrival);
     if (duration < -43200) duration += 86400;
-    return duration >= 15;
+    return duration >= 25;
   })();
   
   return (
@@ -332,12 +354,16 @@ const EventCard: React.FC<{ event: StopEvent, lineName: string }> = ({ event, li
             </h3>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 w-full md:w-2/3">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3 w-full md:w-[80%] overflow-x-auto">
           <TimeInfo label="Tidtabell" time={formatGtfsTime(event.scheduledDeparture)} />
           <TimeInfo label="Ankomst" time={formatActualTime(event.actualArrival)} highlight />
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Uppehåll</span>
+            <span className="text-base font-mono font-bold truncate text-slate-500">{stopDuration ? stopDuration.text : '--'}</span>
+          </div>
           <TimeInfo label="Avgång" time={formatActualTime(event.actualDeparture)} highlight status={isDelayed ? 'warning' : (diff && diff.text === 'I tid' ? 'success' : 'normal')} />
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Diff</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Avvikelse</span>
             <span className={cn("text-base font-mono font-bold truncate", diff?.color || "text-slate-400")}>{diff ? diff.text : '--'}</span>
           </div>
           <div className="flex flex-col justify-center">
@@ -411,6 +437,14 @@ function SearchInput({ label, icon, placeholder, value, onSelect, type, disabled
           onFocus={() => setIsOpen(true)}
           disabled={disabled}
           placeholder={placeholder}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && isOpen && results.length > 0 && !value && !disabled) {
+              e.preventDefault();
+              onSelect(results[0]);
+              setIsOpen(false);
+              setQuery('');
+            }
+          }}
           className="w-full bg-slate-50 border border-slate-200 py-3 pl-10 pr-4 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-300 disabled:cursor-not-allowed text-sm font-semibold"
         />
         {value && !disabled && (

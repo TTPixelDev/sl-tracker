@@ -29,6 +29,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [tripEvents, setTripEvents] = useState<any[]>([]);
   
   const activeTripIdRef = useRef<string | null>(null);
   const lastHistoryFetchRef = useRef<number>(0);
@@ -66,9 +67,13 @@ export default function App() {
                 activeTripIdRef.current = v.tripId;
                 lastHistoryFetchRef.current = now;
                 
-                slService.getVehicleHistory(v.tripId).then((h: any) => {
+                Promise.all([
+                    slService.getVehicleHistory(v.tripId),
+                    slService.getTripEvents(v.tripId)
+                ]).then(([h, events]) => {
                     if (currentTripIdRef.current === v.tripId) {
                         setHistory(h);
+                        setTripEvents(events);
                     }
                 });
             }
@@ -95,37 +100,89 @@ export default function App() {
     
     selectedRoutes.forEach(route => {
         route.stops.forEach(stop => {
+            const ev = tripEvents?.find(e => String(e.stopId) === String(stop.id));
+            if (ev) {
+                const formatTime = (s: number) => {
+                    let h = Math.floor(s / 3600);
+                    if (h >= 24) h -= 24;
+                    const m = Math.floor((s % 3600) / 60);
+                    const sec = s % 60;
+                    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+                };
+                let isStopped = !!ev.stopped;
+                let durationStr = "";
+                if (ev.actualDeparture && ev.actualArrival) {
+                    let durationSec = ev.actualDeparture - ev.actualArrival;
+                    if (durationSec < -43200) durationSec += 86400;
+                    if (durationSec >= 25) {
+                        isStopped = true;
+                    }
+                    if (isStopped && durationSec > 0) {
+                        const mins = Math.floor(durationSec / 60);
+                        const secs = durationSec % 60;
+                        durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                    }
+                }
+                passages.set(stop.id, {
+                    time: ev.actualArrival ? formatTime(ev.actualArrival) : '',
+                    stopped: isStopped,
+                    duration: durationStr,
+                    departureTime: ev.actualDeparture ? formatTime(ev.actualDeparture) : undefined
+                });
+                return;
+            }
+
             const getDistance = (l1:any, n1:any, l2:any, n2:any) => {
               const R = 6371e3, p1 = l1*Math.PI/180, p2 = l2*Math.PI/180, dp = (l2-l1)*Math.PI/180, dn = (n2-n1)*Math.PI/180;
               const a = Math.sin(dp/2)*Math.sin(dp/2) + Math.cos(p1)*Math.cos(p2)*Math.sin(dn/2)*Math.sin(dn/2);
               return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             };
-            const anyNearbyPoints = history.filter(p => getDistance(p.lat, p.lng, stop.lat, stop.lng) < 100);
-            
-            if (anyNearbyPoints.length > 0) {
-                anyNearbyPoints.sort((a, b) => a.ts - b.ts);
-                let arrivalTime = new Date(anyNearbyPoints[0].ts).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                
-                const strictPoints = anyNearbyPoints.filter(p => getDistance(p.lat, p.lng, stop.lat, stop.lng) < 35);
-                let isActuallyStopped = false;
-                let durationStr = "";
-                let departureTimeStr = "";
 
-                if (strictPoints.length >= 2) {
-                    const durationSec = Math.round((strictPoints[strictPoints.length - 1].ts - strictPoints[0].ts) / 1000);
-                    if (durationSec > 10) {
-                        isActuallyStopped = true;
-                        arrivalTime = new Date(strictPoints[0].ts).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        const mins = Math.floor(durationSec / 60);
-                        const secs = durationSec % 60;
-                        durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-                        departureTimeStr = new Date(strictPoints[strictPoints.length - 1].ts).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            let arrivalTs: number | null = null;
+            let departureTs: number | null = null;
+            let wasStopped = false;
+            let completed = false;
+
+            history.forEach(p => {
+                if (completed) return;
+                const dist = getDistance(p.lat, p.lng, stop.lat, stop.lng);
+                
+                if (dist <= 50) {
+                    if (arrivalTs === null) {
+                        arrivalTs = p.ts;
                     }
+                } else if (arrivalTs !== null && dist > 75) {
+                    departureTs = p.ts;
+                    completed = true;
                 }
+            });
+
+            if (arrivalTs !== null) {
+                let durationMs = 0;
+                if (departureTs !== null) {
+                    durationMs = departureTs - arrivalTs;
+                } else {
+                    durationMs = history[history.length - 1].ts - arrivalTs;
+                }
+                
+                if (durationMs >= 25000) {
+                    wasStopped = true;
+                }
+
+                let durationStr = "";
+                if (wasStopped) {
+                    const secs = Math.floor(durationMs / 1000);
+                    const mins = Math.floor(secs / 60);
+                    const remSecs = secs % 60;
+                    durationStr = mins > 0 ? `${mins}m ${remSecs}s` : `${remSecs}s`;
+                }
+
+                const arrivalTime = new Date(arrivalTs).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const departureTimeStr = departureTs ? new Date(departureTs).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : undefined;
 
                 passages.set(stop.id, {
                     time: arrivalTime,
-                    stopped: isActuallyStopped,
+                    stopped: wasStopped,
                     duration: durationStr,
                     departureTime: departureTimeStr
                 });
@@ -133,7 +190,7 @@ export default function App() {
         });
     });
     return passages;
-  }, [selectedRoutes, history]);
+  }, [selectedRoutes, history, tripEvents]);
 
   const handleClear = () => { 
     setSelectedRoutes([]); setActiveStop(null); setSelectedVehicleId(null); setHistory([]);
@@ -224,7 +281,12 @@ export default function App() {
                             const lastStop = route.stops && route.stops.length > 0 ? route.stops[route.stops.length - 1].name : '';
                             
                             const routeVehicles = vehicles.filter((v: any) => v.line === route.line);
-                            const operator = routeVehicles.length > 0 ? routeVehicles[0].operator : (route.agency === 'WAAB' ? 'WAXHOLMSBOLAGET' : 'NOBINA');
+                            const contractor = slService.getLineContractorSync(route.line);
+                            let operator = "OKÄND";
+                            
+                            if (route.agency === 'WAAB') operator = 'WAXHOLMSBOLAGET';
+                            else if (contractor) operator = contractor.toUpperCase();
+                            else operator = routeVehicles.length > 0 ? routeVehicles[0].operator.toUpperCase() : 'NOBINA';
 
                             return (
                                 <div key={route.id} className="flex items-center bg-[#2b3343] text-white rounded-xl shadow-lg border border-[#3b4455] group h-[44px]">

@@ -139,7 +139,7 @@ async function runIngest() {
                                 },
                                 upsert: true
                             }
-                        });
+                        }); // Correctly missing comma or similar is fine here
 
                         if (!activeTracking.has(tripId)) {
                             const tripDoc = await tripsCollection.findOne({ _id: tripId as any });
@@ -195,7 +195,7 @@ async function runIngest() {
                                 const actualDepartureSeconds = departureTime.getHours() * 3600 + departureTime.getMinutes() * 60 + departureTime.getSeconds();
 
                                 const timeStopped = departureTime.getTime() - data.arrivalRegistered.getTime();
-                                const wasStopped = data.hasStopped || timeStopped >= 15000;
+                                const wasStopped = data.hasStopped || timeStopped >= 25000;
 
                                 const event = {
                                     _id: `${tripId}_${stopId}`,
