@@ -1,4 +1,4 @@
-import { MongoClient } from 'mongodb';
+import { MongoClient, AnyBulkWriteOperation } from 'mongodb';
 import protobuf from 'protobufjs';
 import { getDistance } from 'geolib';
 import fs from 'fs';
@@ -7,9 +7,13 @@ import 'dotenv/config';
 
 // --- Konfiguration ---
 const API_ENDPOINT = 'https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/VehiclePositionsSweden.pb';
-const INTERVAL_MS = 2000; 
-const STOP_RADIUS = 50; 
-const STOPPED_SPEED_THRESHOLD = 5; 
+const INTERVAL_MS = 2000;
+const STOP_RADIUS = 50;
+const STOPPED_SPEED_THRESHOLD = 5;
+
+// Sökvägar för loggfiler
+const STATUS_FILE_PATH = process.env.STATUS_FILE_PATH || '/var/www/html/status.txt';
+const STATUS_JSON_PATH = process.env.STATUS_JSON_PATH || '/var/www/html/status.json';
 
 const PROTO_DEF = `
 syntax = "proto2";
@@ -30,7 +34,7 @@ message Alert {}
 const root = protobuf.parse(PROTO_DEF).root;
 const FeedMessage = root.lookupType("transit_realtime.FeedMessage");
 
-const activeTracking = new Map();
+const activeTracking = new Map<string, any>();
 let lastHeartbeat = Date.now();
 let savedEventsToday = 0;
 
@@ -39,27 +43,24 @@ async function runIngest() {
     const apiKey = process.env.RT_API_KEY;
 
     if (!uri || !apiKey) {
-        console.error("❌ MONGODB_URI eller RT_API_KEY saknas!");
+        console.error("❌ MONGODB_URI eller RT_API_KEY saknas i .env filen!");
         process.exit(1);
     }
 
     console.log("🚀 Startar optimerad SL Ingest Combo Service...");
-
     const client = new MongoClient(uri);
 
     try {
         await client.connect();
         console.log("✅ Ansluten till databasen.");
 
-        const db = client.db("sl-times"); // Merge till en databas
-
+        const db = client.db("sl-times");
         const trailsCollection = db.collection("vehicle_trails");
         const stopEventsCollection = db.collection("stop_events");
         const tripsCollection = db.collection("trips");
         const stopsCollection = db.collection("stops");
         const statusCollection = db.collection("status");
 
-        // Försäkra att index finns (rensas efter 90 dagar)
         await stopEventsCollection.createIndex({ ts: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
         await stopEventsCollection.createIndex({ d: 1, l: 1, s: 1, sdm: 1 });
         await trailsCollection.createIndex({ tripId: 1 }, { unique: true });
@@ -67,42 +68,44 @@ async function runIngest() {
 
         console.log("📦 Hämtar hållplatsdata...");
         const allStops = await stopsCollection.find({}).toArray();
-        const stopLookup = new Map();
+        const stopLookup = new Map<string, any>();
         allStops.forEach(s => stopLookup.set(s.id, s));
-        console.log(`📍 \${stopLookup.size} hållplatser inlästa.`);
+        console.log(`📍 ${stopLookup.size} hållplatser inlästa.`);
 
         setInterval(() => {
             const now = Date.now();
             let cleaned = 0;
             for (const [tripId, data] of activeTracking.entries()) {
-                if (now - data.lastSeen > 20 * 60 * 1000) { 
+                if (now - data.lastSeen > 20 * 60 * 1000) {
                     activeTracking.delete(tripId);
                     cleaned++;
                 }
             }
-            if (cleaned > 0) console.log(`🧹 Rensade \${cleaned} inaktiva resor från RAM.`);
+            if (cleaned > 0) console.log(`🧹 Rensade ${cleaned} inaktiva resor från RAM.`);
         }, 15 * 60 * 1000);
 
         while (true) {
             const startTime = Date.now();
+            let statusMessage = "Hämtar data...";
             let cleanText = "Hämtar data...";
             let aktivBool = 0;
             let trackerCount = 0;
 
             try {
-                const response = await fetch(`\${API_ENDPOINT}?key=\${apiKey}`);
-                if (!response.ok) throw new Error(`API Error: \${response.status}`);
+                const response = await fetch(`${API_ENDPOINT}?key=${apiKey}`);
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
 
                 const arrayBuffer = await response.arrayBuffer();
                 const message = FeedMessage.decode(new Uint8Array(arrayBuffer));
-                const object = FeedMessage.toObject(message, { enums: String, longs: String, defaults: true });
+                const object: any = FeedMessage.toObject(message, { enums: String, longs: String, defaults: true });
                 const entities = object.entity || [];
 
                 const timeStr = new Date().toLocaleTimeString('sv-SE', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
                 const now = Date.now();
 
                 if (entities.length === 0) {
-                    cleanText = `Inga fordon hittades (\${timeStr})`;
+                    statusMessage = `Inga fordon hittades (${timeStr})`;
+                    cleanText = statusMessage;
                 } else {
                     const tripDelays: Record<string, number> = {};
                     entities.forEach((e: any) => {
@@ -116,9 +119,8 @@ async function runIngest() {
                         }
                     });
 
-                    // Live trails will be dropped after ~4 hours
                     const expireTime = new Date(now + 4 * 60 * 60 * 1000);
-                    const trackerOps: any[] = [];
+                    const trackerOps: AnyBulkWriteOperation[] = [];
 
                     for (const e of entities) {
                         const v = e.vehicle;
@@ -128,27 +130,19 @@ async function runIngest() {
                         const routeId = v.trip.routeId;
                         if (!tripId) continue;
 
-                        // 1. LIVE DATA: SL & WAAB
                         trackerOps.push({
                             updateOne: {
                                 filter: { tripId: tripId },
                                 update: {
                                     $set: { line: routeId, vehicleId: v.vehicle?.id || e.id, expireAt: expireTime, lastUpdate: now },
-                                    $push: { trail: { lat: v.position.latitude, lng: v.position.longitude, ts: now, delay: tripDelays[tripId] ?? null } }
+                                    $push: { trail: { lat: v.position.latitude, lng: v.position.longitude, ts: now, delay: tripDelays[tripId] ?? null } } as any
                                 },
                                 upsert: true
                             }
                         });
 
-                        // 2. TIMES/HISTORY DATA
-                        // WAAB should only be live, not history. 
-                        // Our GTFS data has agency. If we can't find it, we don't know, but WAAB trips are usually distinct.
-                        // For SL, we look it up.
-                        
-                        if (activeTracking.has(tripId)) {
-                            activeTracking.get(tripId).lastSeen = now;
-                        } else {
-                            const tripDoc = await tripsCollection.findOne({ _id: tripId });
+                        if (!activeTracking.has(tripId)) {
+                            const tripDoc = await tripsCollection.findOne({ _id: tripId as any });
                             if (tripDoc && tripDoc.stops) {
                                 const stopMap = new Map();
                                 tripDoc.stops.forEach((s: any) => {
@@ -172,6 +166,8 @@ async function runIngest() {
                             } else {
                                 activeTracking.set(tripId, { lastSeen: now, notFound: true });
                             }
+                        } else {
+                            activeTracking.get(tripId).lastSeen = now;
                         }
 
                         const tripData = activeTracking.get(tripId);
@@ -187,11 +183,10 @@ async function runIngest() {
                             if (dist <= STOP_RADIUS) {
                                 if (!data.arrivalRegistered) {
                                     data.arrivalRegistered = new Date();
-                                    console.log(`📍 [Resa \${tripId}] Ankommit till \${stopId}`);
+                                    console.log(`📍 [Resa ${tripId}] Ankommit till ${stopId}`);
                                 }
                                 if (speed <= STOPPED_SPEED_THRESHOLD) data.hasStopped = true;
-                            }
-                            else if (data.arrivalRegistered && dist > STOP_RADIUS + 25) {
+                            } else if (data.arrivalRegistered && dist > STOP_RADIUS + 25) {
                                 data.completed = true;
                                 const departureTime = new Date();
                                 const dateStr = new Date().toISOString().split('T')[0];
@@ -203,7 +198,7 @@ async function runIngest() {
                                 const wasStopped = data.hasStopped || timeStopped >= 15000;
 
                                 const event = {
-                                    _id: `\${tripId}_\${stopId}`,
+                                    _id: `${tripId}_${stopId}`,
                                     t: tripId,
                                     l: data.routeId,
                                     dn: data.destinationName,
@@ -220,7 +215,7 @@ async function runIngest() {
 
                                 await stopEventsCollection.updateOne({ _id: event._id as any }, { $set: event }, { upsert: true });
                                 savedEventsToday++;
-                                console.log(`✅ [Resa \${tripId}] SPARAT: Stopp vid \${stopId} (\${event.st ? 'STANNADE' : 'PASSERADE'})`);
+                                console.log(`✅ [Resa ${tripId}] SPARAT: Stopp vid ${stopId} (${event.st ? 'STANNADE' : 'PASSERADE'})`);
                             }
                         }
                     }
@@ -229,43 +224,50 @@ async function runIngest() {
                     if (trackerCount > 0) {
                         await trailsCollection.bulkWrite(trackerOps, { ordered: false });
                         aktivBool = 1;
-                        cleanText = `Aktiv: \${trackerCount} fordon (\${timeStr})`;
-                        
+                        statusMessage = `Aktiv: <font color='#00ff00'>${trackerCount}</font> fordon (${timeStr})`;
+                        cleanText = `Aktiv: ${trackerCount} fordon (${timeStr})`;
+
                         if (now - lastHeartbeat > 30000) {
-                            console.log(`[\${timeStr}] 📊 Tracker: \${trackerCount} fordon | 📋 Övervakar: \${activeTracking.size} resor | ✅ Sparat idag: \${savedEventsToday}`);
+                            console.log(`[${timeStr}] 📊 Tracker: ${trackerCount} fordon | 📋 Övervakar: ${activeTracking.size} resor | ✅ Sparat idag: ${savedEventsToday}`);
                             lastHeartbeat = now;
                         }
                     }
                 }
             } catch (err: any) {
                 const timeStr = new Date().toLocaleTimeString('sv-SE', {hour: '2-digit', minute:'2-digit'});
-                console.error(`❌ Loop-fel vid \${timeStr}:`, err.message);
+                statusMessage = `<font color='red'>FEL: Loop-avbrott</font> (${timeStr})`;
+                console.error(`❌ Loop-fel vid ${timeStr}:`, err?.message || err);
             }
 
             try {
+                if (fs.existsSync(path.dirname(STATUS_FILE_PATH))) {
+                    fs.writeFileSync(STATUS_FILE_PATH, statusMessage);
+                    fs.writeFileSync(STATUS_JSON_PATH, JSON.stringify({ text: cleanText, aktiv: aktivBool }));
+                }
+
                 await statusCollection.updateOne(
                     { _id: "ingest_status" as any },
-                    { 
-                        $set: { 
+                    {
+                        $set: {
                             lastUpdate: new Date(),
                             text: cleanText,
                             aktiv: aktivBool === 1,
                             tracking: trackerCount,
                             monitoring: activeTracking.size,
                             savedToday: savedEventsToday
-                        } 
+                        }
                     },
                     { upsert: true }
                 );
             } catch (e: any) {
-                console.error("⚠️ Kunde inte spara status-dokument:", e.message);
+                console.error("⚠️ Kunde inte spara status-dokument/fil:", e?.message || e);
             }
 
             const workDuration = Date.now() - startTime;
             await new Promise(resolve => setTimeout(resolve, Math.max(100, INTERVAL_MS - workDuration)));
         }
-    } catch (fatal) {
-        console.error("FATALT FEL I TJÄNSTEN:", fatal);
+    } catch (fatal: any) {
+        console.error("FATALT FEL I TJÄNSTEN:", fatal?.message || fatal);
         process.exit(1);
     }
 }

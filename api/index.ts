@@ -54,7 +54,7 @@ app.get("/api/trip-history", async (req, res) => {
   try {
     const { tripId } = req.query;
     if (!tripId || typeof tripId !== "string") return res.status(400).json({ error: "Missing tripId" });
-    const db = getDb("sl_tracker");
+    const db = getDb("sl-times");
     const trip = await db.collection("vehicle_trails").findOne({ tripId }, { projection: { trail: 1, _id: 0 } });
     if (!trip || !trip.trail) return res.status(200).json({ path: [] });
     const path = (trip.trail as any[]).sort((a, b) => a.ts - b.ts).map(p => ({ lat: p.lat, lng: p.lng, ts: p.ts, delay: p.delay }));

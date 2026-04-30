@@ -86,11 +86,13 @@ const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSe
         '</div>' +
         '</div>';
     } else {
-      markerHtml = '<div style="transform: rotate(' + vehicle.bearing + 'deg); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; position: relative;">' +
+      markerHtml = '<div style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; position: relative;">' +
+        '<div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transform: rotate(' + vehicle.bearing + 'deg);">' +
         '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">' +
         '<path d="M12 2L4 21L12 17L20 21L12 2Z" fill="' + color + '" stroke="white" stroke-width="2" stroke-linejoin="round"/>' +
         '</svg>' +
-        '<div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%) rotate(' + (-vehicle.bearing) + 'deg); background: ' + color + '; color: white; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">' +
+        '</div>' +
+        '<div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: ' + color + '; color: white; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">' +
         lineShortName +
         '</div>' +
         '</div>';
@@ -202,9 +204,36 @@ export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVeh
 
         {activeStop && <Marker position={[activeStop.lat, activeStop.lng]}><Popup>{activeStop.name}</Popup></Marker>}
         
-        {history.length > 1 && (
-            <Polyline positions={history.map((p: any) => [p.lat, p.lng])} color="#ef4444" weight={3} dashArray="5, 10" opacity={0.8} />
-        )}
+        {history.length > 1 && (() => {
+            const positions = history.map((p: any) => [p.lat, p.lng] as [number, number]);
+            // Limit the number of arrows to about ~15 per trail
+            const arrowStep = Math.max(1, Math.floor(history.length / 15));
+            
+            return (
+              <React.Fragment>
+                <Polyline positions={positions} color="#ef4444" weight={3} dashArray="6, 8" opacity={0.8} />
+                {history.map((p: any, i: number) => {
+                    if (i === 0 || i === history.length - 1 || i % arrowStep !== 0) return null;
+                    const prev = history[i - 1];
+                    const lat1 = prev.lat * Math.PI / 180;
+                    const lat2 = p.lat * Math.PI / 180;
+                    const dLon = (p.lng - prev.lng) * Math.PI / 180;
+                    const y = Math.sin(dLon) * Math.cos(lat2);
+                    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+                    const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+                    
+                    const arrowIcon = L.divIcon({
+                        html: `<svg width="12" height="12" viewBox="0 0 12 12" style="transform: rotate(${brng}deg); display: block;"><polygon points="6,0 12,12 6,9 0,12" fill="#ef4444"/></svg>`,
+                        className: '',
+                        iconSize: [12, 12],
+                        iconAnchor: [6, 6]
+                    });
+                    
+                    return <Marker key={`arrow-${i}`} position={[p.lat, p.lng]} icon={arrowIcon} interactive={false} />;
+                })}
+              </React.Fragment>
+            );
+        })()}
         
         {vehicles.filter((v: any) => showAll || selectedRoutes.some((r: any) => r.id === v.line) || selectedVehicleId === v.id).map((v: any) => {
             return (

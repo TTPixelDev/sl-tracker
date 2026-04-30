@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { RefreshCw, Map as MapIcon, History as HistoryIcon, Trash2 } from 'lucide-react';
+import { RefreshCw, Map as MapIcon, History as HistoryIcon, Trash2, X } from 'lucide-react';
 import { slService } from './services/slService';
 import { SLVehicle, SLLineRoute, SLStop, HistoryPoint } from './types';
 import LiveMap, { getLineColor, getTransportIcon } from './components/LiveMap';
@@ -200,42 +200,53 @@ export default function App() {
 
       {view === 'live' ? (
         <>
-            <div className="absolute top-4 left-0 right-0 z-[2000] px-4 pointer-events-none flex flex-col items-center gap-2">
-                <div className="w-full max-w-lg pointer-events-auto mr-auto ml-10">
-                    {/* Padding so it doesn't overlap left menu if we add one, or the toggle */}
-                    <div className="pr-32 max-w-sm rounded-xl">
-                        <SearchBar 
-                            onSelect={handleSelect} 
-                            onClear={handleClear} 
-                            activeRoute={null}
-                            selectedRoutes={selectedRoutes}
-                            searchQuery={searchQuery} 
-                            onSearchChange={setSearchQuery} 
-                            currentAgency={agency} 
-                            stopPassages={stopPassages}
-                        />
-                    </div>
+            <div className="absolute top-6 left-6 right-6 z-[2000] pointer-events-none flex flex-col items-start gap-2">
+                <div className="w-full max-w-sm pointer-events-auto">
+                    <SearchBar 
+                        onSelect={handleSelect} 
+                        onClear={handleClear} 
+                        activeRoute={null}
+                        selectedRoutes={selectedRoutes}
+                        searchQuery={searchQuery} 
+                        onSearchChange={setSearchQuery} 
+                        currentAgency={agency} 
+                        stopPassages={stopPassages}
+                    />
                 </div>
 
                 {selectedRoutes.length > 0 && (
-                    <div className="flex flex-wrap justify-start gap-2 pointer-events-auto max-w-3xl mr-auto ml-10 mt-2">
+                    <div className="flex flex-wrap justify-start gap-2 pointer-events-auto max-w-3xl mt-1">
                         {selectedRoutes.map(route => {
                             const lineColorHex = getLineColor(route.line, route.agency);
                             const TransportIcon = getTransportIcon(route.line, route.agency);
+                            
+                            const firstStop = route.stops && route.stops.length > 0 ? route.stops[0].name : '';
+                            const lastStop = route.stops && route.stops.length > 0 ? route.stops[route.stops.length - 1].name : '';
+                            
+                            const routeVehicles = vehicles.filter((v: any) => v.line === route.line);
+                            const operator = routeVehicles.length > 0 ? routeVehicles[0].operator : (route.agency === 'WAAB' ? 'WAXHOLMSBOLAGET' : 'NOBINA');
+
                             return (
-                                <div key={route.id} className="flex items-center gap-2 bg-slate-900/90 backdrop-blur-md text-white pl-3 pr-2 py-1.5 rounded-xl shadow-lg border border-white/10 group hover:bg-slate-800 transition-colors">
-                                    <TransportIcon className="w-4 h-4 shrink-0 mt-0.5" style={{ color: lineColorHex }} />
-                                    <div className="flex flex-col min-w-0">
-                                        <span className="text-xs font-bold whitespace-nowrap leading-none">Linje {route.line}</span>
+                                <div key={route.id} className="flex items-center bg-[#2b3343] text-white rounded-xl shadow-lg border border-[#3b4455] group h-[44px]">
+                                    <div className="flex items-center gap-2 pl-3 pr-3">
+                                        <TransportIcon className="w-[18px] h-[18px] shrink-0" style={{ color: lineColorHex }} />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-[13px] font-bold whitespace-nowrap leading-tight">Linje {route.line}</span>
+                                            <span className="text-[9px] font-bold tracking-wider text-slate-400 leading-none uppercase mt-0.5">{operator}</span>
+                                        </div>
                                     </div>
-                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveRoute(route.id); }} className="p-1 hover:bg-white/10 rounded-full transition-colors ml-1">
-                                        <Trash2 className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-400" />
+                                    <div className="flex flex-col min-w-0 pl-3 py-1 pr-1 border-l border-[#3b4455] h-full justify-center gap-0.5">
+                                        <span className="text-[10px] text-slate-300 leading-none truncate w-24">{(firstStop || '').replace(/\s*\(.*\)/, '')}</span>
+                                        <span className="text-[10px] text-slate-300 leading-none truncate w-24">{(lastStop || '').replace(/\s*\(.*\)/, '')}</span>
+                                    </div>
+                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveRoute(route.id); }} className="px-3 hover:bg-white/10 h-full rounded-r-xl transition-colors flex items-center justify-center">
+                                        <X className="w-[14px] h-[14px] text-slate-400 group-hover:text-white" />
                                     </button>
                                 </div>
                             );
                         })}
-                        <button onClick={handleClear} className="flex items-center gap-2 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-xl shadow-lg border border-white/10 backdrop-blur-md transition-all text-xs font-bold active:scale-95 group h-full">
-                            <Trash2 className="w-3.5 h-3.5" /> <span>Rensa alla</span>
+                        <button onClick={handleClear} className="flex items-center gap-2 bg-[#4a5568] hover:bg-[#3f4859] text-white px-3 py-1.5 h-[44px] rounded-xl shadow-lg border border-[#5a677d] transition-all text-[13px] font-semibold active:scale-95 group">
+                            <Trash2 className="w-[14px] h-[14px]" /> <span>Rensa alla</span>
                         </button>
                     </div>
                 )}

@@ -189,8 +189,7 @@ export default function HistoryView() {
     <div className="absolute inset-0 bg-[#F0F2F5] overflow-y-auto w-full z-[100] top-0 pt-24 text-slate-900 font-sans pb-20">
       <div className="hidden md:flex absolute top-6 left-6 items-center gap-2 text-slate-500 font-bold uppercase tracking-widest text-xs">
         <Info className="w-4 h-4" />
-        <span>Historik ({historyDays !== null ? `${historyDays} d` : '...'})</span>
-        <span className="text-[10px] ml-4 bg-blue-100 text-blue-600 px-2 py-1 rounded-full">SL ENDAST</span>
+        <span>Sparad Historik: {historyDays !== null ? `${historyDays} ${historyDays === 1 ? 'dag' : 'dagar'}` : '...'}</span>
       </div>
       
       <main className="max-w-6xl mx-auto px-4">
