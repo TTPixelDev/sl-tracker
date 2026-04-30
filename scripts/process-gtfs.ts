@@ -283,10 +283,6 @@ async function processGTFS() {
                 r: trip.routeId,
                 h: trip.destinationName
             };
-
-            // Vi kan estimera direction genom en egenskap om vi haft den,
-            // men vi sparade inte direction_id i tripsProcessed från början.
-            // Fast vi hämtar direction_id från trips.txt nedan... Wait, let me just add it.
         }
 
         // Läs direction_id en gång till

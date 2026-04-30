@@ -78,13 +78,13 @@ const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAg
       <div className="bg-slate-800/50 p-1 rounded-xl flex border border-white/5">
         <button 
           onClick={() => onAgencyChange('SL')} 
-          className={`flex-1 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all \${currentAgency === 'SL' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+          className={`flex-1 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${currentAgency === 'SL' ? 'bg-[#3b82f6] text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:text-white'}`}
         >
           SL
         </button>
         <button 
           onClick={() => onAgencyChange('WAAB')} 
-          className={`flex-1 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-2 \${currentAgency === 'WAAB' ? 'bg-cyan-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+          className={`flex-1 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${currentAgency === 'WAAB' ? 'bg-[#0891b2] text-white shadow-lg shadow-cyan-900/20' : 'text-slate-400 hover:text-white'}`}
         >
           <Ship className="w-3.5 h-3.5" /> WÅAB
         </button>
@@ -118,7 +118,7 @@ const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAg
         <button 
             type="submit"
             disabled={loading || !query.trim()}
-            className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 \${
+            className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 ${
               isWAAB ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-blue-600 hover:bg-blue-500'
             } disabled:bg-slate-700 disabled:cursor-not-allowed text-white`}
         >

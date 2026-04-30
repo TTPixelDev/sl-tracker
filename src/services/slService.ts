@@ -177,7 +177,7 @@ class SLService {
         if (!res.ok) return null;
         return await res.json();
     } catch(e){
-        return null; // Handle if json doesn't exist
+        return null;
     }
   }
 

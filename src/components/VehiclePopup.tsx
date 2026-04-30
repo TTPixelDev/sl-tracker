@@ -40,8 +40,6 @@ const VehiclePopup: React.FC<VehiclePopupProps> = ({ vehicle, lineShortName }) =
   
   const transportInfo = getTransportType(lineShortName);
   const TransportIcon = transportInfo.icon;
-  // using hex colors from getLineColor, so we style directly or map to bg- classes. 
-  // For simplicity, just use the style attribute for background.
   const lineColorHex = getLineColor(lineShortName, vehicle.agency);
   
   let company = "Okänd";
