@@ -95,7 +95,7 @@ app.get("/api/status", async (req, res) => {
       savedToday: status.savedToday || 0
     });
   } catch (e) {
-    res.status(500).json({ error: "Fail" });
+    res.status(200).json({ online: false, text: "Ingen status", lastUpdate: null });
   }
 });
 
@@ -108,7 +108,7 @@ app.get("/api/data-range", async (req, res) => {
     const diff = Math.max(0, new Date().getTime() - date.getTime());
     res.status(200).json({ days: Math.ceil(diff / (1000 * 3600 * 24)) });
   } catch (e) {
-    res.status(500).json({ error: "Fail" });
+    res.status(200).json({ days: 0 });
   }
 });
 
@@ -116,6 +116,7 @@ app.get("/api/search", async (req, res) => {
   try {
     const { q, type } = req.query;
     if (typeof q !== "string" || !q) return res.status(200).json([]);
+    if (!mongoClient) return res.status(200).json([]);
     const db = getDb("sl-times");
     if (type === "stop") {
       const stops = await db.collection("stops").find({ name: { $regex: q, $options: "i" } }).limit(15).toArray();
@@ -127,7 +128,7 @@ app.get("/api/search", async (req, res) => {
       return res.status(200).json(routes.map(r => ({ type: "line", id: r.id, title: `Linje ${r.shortName}`, subtitle: r.longName })));
     }
   } catch (e) {
-    res.status(500).json({ error: "Fail" });
+    res.status(200).json([]);
   }
 });
 
@@ -142,7 +143,7 @@ app.get("/api/line-stops", async (req, res) => {
     const stops = await db.collection("stops").find({ id: { $in: Array.from(sIds) } }).toArray();
     return res.status(200).json({ stops: stops.sort((a,b) => a.name.localeCompare(b.name)) });
   } catch (e) {
-    res.status(500).json({ error: "Fail" });
+    res.status(200).json({ stops: [] });
   }
 });
 
@@ -216,7 +217,7 @@ app.get("/api/history", async (req, res) => {
     if (direction === "prev") events.reverse();
     return res.status(200).json(events);
   } catch(e) {
-    res.status(500).json({ error: "Fail" });
+    res.status(200).json([]);
   }
 });
 
