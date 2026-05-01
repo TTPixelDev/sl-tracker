@@ -11,6 +11,7 @@ const INTERVAL_MS = 2000;
 const STOP_RADIUS = 30;
 const STOPPED_SPEED_THRESHOLD = 5;
 const TRAIL_EXPIRE_HOURS = 2;
+const HISTORY_EXPIRE_DAYS = 90;
 
 // Sökvägar för loggfiler
 const STATUS_FILE_PATH = process.env.STATUS_FILE_PATH || '/var/www/html/status.txt';
@@ -62,7 +63,7 @@ async function runIngest() {
         const stopsCollection = db.collection("stops");
         const statusCollection = db.collection("status");
 
-        await stopEventsCollection.createIndex({ ts: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
+        await stopEventsCollection.createIndex({ ts: 1 }, { expireAfterSeconds: HISTORY_EXPIRE_DAYS * 24 * 60 * 60 });
         await stopEventsCollection.createIndex({ d: 1, l: 1, s: 1, sdm: 1 });
         await trailsCollection.createIndex({ tripId: 1 }, { unique: true });
         await trailsCollection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
