@@ -10,6 +10,7 @@ const API_ENDPOINT = 'https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/VehicleP
 const INTERVAL_MS = 2000;
 const STOP_RADIUS = 30;
 const STOPPED_SPEED_THRESHOLD = 5;
+const TRAIL_EXPIRE_HOURS = 2;
 
 // Sökvägar för loggfiler
 const STATUS_FILE_PATH = process.env.STATUS_FILE_PATH || '/var/www/html/status.txt';
@@ -119,7 +120,7 @@ async function runIngest() {
                         }
                     });
 
-                    const expireTime = new Date(now + 1 * 120 * 60 * 1000);
+                    const expireTime = new Date(now + TRAIL_EXPIRE_HOURS * 60 * 60 * 1000);
                     const trackerOps: AnyBulkWriteOperation[] = [];
 
                     for (const e of entities) {
