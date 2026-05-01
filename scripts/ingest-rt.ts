@@ -119,7 +119,7 @@ async function runIngest() {
                         }
                     });
 
-                    const expireTime = new Date(now + 4 * 60 * 60 * 1000);
+                    const expireTime = new Date(now + 1 * 120 * 60 * 1000);
                     const trackerOps: AnyBulkWriteOperation[] = [];
 
                     for (const e of entities) {
@@ -129,17 +129,6 @@ async function runIngest() {
                         const tripId = v.trip.tripId || e.id;
                         const routeId = v.trip.routeId;
                         if (!tripId) continue;
-
-                        trackerOps.push({
-                            updateOne: {
-                                filter: { tripId: tripId },
-                                update: {
-                                    $set: { line: routeId, vehicleId: v.vehicle?.id || e.id, expireAt: expireTime, lastUpdate: now },
-                                    $push: { trail: { lat: v.position.latitude, lng: v.position.longitude, ts: now, delay: tripDelays[tripId] ?? null } } as any
-                                },
-                                upsert: true
-                            }
-                        });
 
                         if (!activeTracking.has(tripId)) {
                             const tripDoc = await tripsCollection.findOne({ _id: tripId as any });
@@ -166,12 +155,30 @@ async function runIngest() {
                             } else {
                                 activeTracking.set(tripId, { lastSeen: now, notFound: true });
                             }
-                        } else {
-                            activeTracking.get(tripId).lastSeen = now;
                         }
 
                         const tripData = activeTracking.get(tripId);
-                        if (!tripData || tripData.notFound) continue;
+                        tripData.lastSeen = now;
+
+                        const posStr = `${v.position.latitude},${v.position.longitude}`;
+                        if (tripData.lastPos === posStr && tripData.lastTimestamp === v.timestamp) {
+                            continue;
+                        }
+                        tripData.lastPos = posStr;
+                        tripData.lastTimestamp = v.timestamp;
+
+                        trackerOps.push({
+                            updateOne: {
+                                filter: { tripId: tripId },
+                                update: {
+                                    $set: { line: routeId, vehicleId: v.vehicle?.id || e.id, expireAt: expireTime, lastUpdate: now },
+                                    $push: { trail: { lat: v.position.latitude, lng: v.position.longitude, ts: now, delay: tripDelays[tripId] ?? null } } as any
+                                },
+                                upsert: true
+                            }
+                        });
+
+                        if (tripData.notFound) continue;
 
                         const pos = { latitude: v.position.latitude, longitude: v.position.longitude };
                         const speed = (v.position.speed || 0) * 3.6;
