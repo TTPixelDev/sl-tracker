@@ -410,7 +410,7 @@ function SearchInput({ label, icon, placeholder, value, onSelect, type, disabled
 
   useEffect(() => {
     if (disabled) return;
-    if (predefinedResults && predefinedResults.length > 0) {
+    if (predefinedResults !== undefined) {
       if (query.length === 0) setResults(predefinedResults);
       else setResults(predefinedResults.filter((r: any) => r.title.toLowerCase().includes(query.toLowerCase())));
       return;

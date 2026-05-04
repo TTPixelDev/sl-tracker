@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { slService } from '../services/slService';
@@ -71,6 +71,13 @@ export const getTransportIcon = (lineString: string, agency?: string) => {
 
 const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSelect, onDeselect }) => {
   const markerRef = useRef<L.Marker>(null);
+  const isUnmounting = useRef(false);
+
+  useLayoutEffect(() => {
+    return () => {
+      isUnmounting.current = true;
+    };
+  }, []);
   
   const icon = useMemo(() => {
     const color = getLineColor(lineShortName, vehicle.agency);
@@ -122,7 +129,7 @@ const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSe
       icon={icon} 
       eventHandlers={{ 
         click: () => onSelect(vehicle.id), 
-        popupclose: () => { if (isSelected) onDeselect(); }
+        popupclose: () => { if (isSelected && !isUnmounting.current) onDeselect(); }
       }}
     >
       <Popup className="custom-popup" autoPan={false} closeButton={true}>

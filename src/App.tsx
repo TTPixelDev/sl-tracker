@@ -59,11 +59,17 @@ export default function App() {
     if (view !== 'live') return;
     if (selectedVehicleId) {
         const v = vehicles.find(x => x.id === selectedVehicleId);
-        if (v) {
+        if (v && v.tripId) {
             currentTripIdRef.current = v.tripId;
             const now = Date.now();
             
             if (activeTripIdRef.current !== v.tripId || now - lastHistoryFetchRef.current >= 5000) {
+                const isNewTrip = activeTripIdRef.current !== v.tripId;
+                if (isNewTrip) {
+                    setHistory([]);
+                    setTripEvents([]);
+                }
+                
                 activeTripIdRef.current = v.tripId;
                 lastHistoryFetchRef.current = now;
                 
@@ -72,13 +78,19 @@ export default function App() {
                     slService.getTripEvents(v.tripId)
                 ]).then(([h, events]) => {
                     if (currentTripIdRef.current === v.tripId) {
-                        setHistory(h);
-                        setTripEvents(events);
+                        setHistory(prev => {
+                            if (!isNewTrip && prev.length > 0 && h.length === 0) return prev;
+                            return h;
+                        });
+                        setTripEvents(prev => {
+                            if (!isNewTrip && prev.length > 0 && events.length === 0) return prev;
+                            return events;
+                        });
                     }
                 });
             }
             
-            if (!selectedRoutes.some(r => r.id === v.line)) {
+            if (v.line && !selectedRoutes.some(r => r.id === v.line)) {
                 slService.getLineRoute(v.line).then((r: any) => {
                     if (currentTripIdRef.current === v.tripId && r) {
                         setSelectedRoutes(prev => prev.some(pr => pr.id === r.id) ? prev : [...prev, r]);
