@@ -163,6 +163,12 @@ async function runIngest() {
                         tripData.lastSeen = now;
 
                         const posStr = `${v.position.latitude},${v.position.longitude}`;
+                        let prevPos = null;
+                        if (tripData.lastPos && tripData.lastPos !== posStr) {
+                            const [lat, lng] = tripData.lastPos.split(',').map(Number);
+                            prevPos = { latitude: lat, longitude: lng };
+                        }
+
                         if (tripData.lastPos === posStr && tripData.lastTimestamp === v.timestamp) {
                             continue;
                         }
@@ -185,9 +191,35 @@ async function runIngest() {
                         const pos = { latitude: v.position.latitude, longitude: v.position.longitude };
                         const speed = (v.position.speed || 0) * 3.6;
 
+                        const getMeters = (p1lat: number, p1lng: number, p2lat: number, p2lng: number) => {
+                            const R = 6371e3;
+                            const latCos = Math.cos(p1lat * Math.PI / 180);
+                            return {
+                                x: (p2lng - p1lng) * (Math.PI / 180) * R * latCos,
+                                y: (p2lat - p1lat) * (Math.PI / 180) * R
+                            };
+                        };
+
+                        const pointLineDistance = (p1lat: number, p1lng: number, p2lat: number, p2lng: number, plat: number, plng: number) => {
+                            const pm = getMeters(p1lat, p1lng, plat, plng);
+                            const p2m = getMeters(p1lat, p1lng, p2lat, p2lng);
+                            const l2 = p2m.x * p2m.x + p2m.y * p2m.y;
+                            if (l2 === 0) return Math.sqrt(pm.x * pm.x + pm.y * pm.y);
+                            let t = (pm.x * p2m.x + pm.y * p2m.y) / l2;
+                            t = Math.max(0, Math.min(1, t));
+                            const dx = pm.x - t * p2m.x;
+                            const dy = pm.y - t * p2m.y;
+                            return Math.sqrt(dx * dx + dy * dy);
+                        };
+
                         for (const [stopId, data] of tripData.stops.entries()) {
                             if (data.completed) continue;
-                            const dist = getDistance(pos, { latitude: data.lat, longitude: data.lng });
+                            let dist = getDistance(pos, { latitude: data.lat, longitude: data.lng });
+
+                            if (prevPos) {
+                                const segDist = pointLineDistance(prevPos.latitude, prevPos.longitude, pos.latitude, pos.longitude, data.lat, data.lng);
+                                if (segDist < dist) dist = segDist;
+                            }
 
                             if (dist <= STOP_RADIUS) {
                                 if (!data.arrivalRegistered) {

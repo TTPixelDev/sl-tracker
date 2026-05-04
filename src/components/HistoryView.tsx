@@ -262,6 +262,17 @@ export default function HistoryView() {
           </form>
         </section>
 
+        {/* Info Message */}
+        {events.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl flex items-start gap-4 mb-8 text-blue-900 shadow-sm">
+            <Info className="w-5 h-5 shrink-0 text-blue-500 mt-0.5" />
+            <div className="text-sm">
+              <strong className="text-blue-900 font-bold block mb-0.5">Om saknad information</strong>
+              <p className="text-blue-800">Utebliven information för en avgång betyder inte nödvändigtvis att den var inställd. Det beror oftast på tekniska problem, till exempel att bussen inte kunnat loggas in eller spåras korrekt under sin tur.</p>
+            </div>
+          </div>
+        )}
+
         {/* Results */}
         <section className="space-y-4">
           <AnimatePresence mode="popLayout">

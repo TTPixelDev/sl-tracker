@@ -138,14 +138,41 @@ export default function App() {
               return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             };
 
+            const R = 6371e3;
+            const getMeters = (p1lat: number, p1lng: number, p2lat: number, p2lng: number) => {
+                const latCos = Math.cos(p1lat * Math.PI / 180);
+                return {
+                    x: (p2lng - p1lng) * (Math.PI / 180) * R * latCos,
+                    y: (p2lat - p1lat) * (Math.PI / 180) * R
+                };
+            };
+            const pointLineDistance = (p1lat: number, p1lng: number, p2lat: number, p2lng: number, plat: number, plng: number) => {
+                const pm = getMeters(p1lat, p1lng, plat, plng);
+                const p2m = getMeters(p1lat, p1lng, p2lat, p2lng);
+                const l2 = p2m.x * p2m.x + p2m.y * p2m.y;
+                if (l2 === 0) return Math.sqrt(pm.x * pm.x + pm.y * pm.y);
+                let t = (pm.x * p2m.x + pm.y * p2m.y) / l2;
+                t = Math.max(0, Math.min(1, t));
+                const dx = pm.x - t * p2m.x;
+                const dy = pm.y - t * p2m.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            };
+
             let arrivalTs: number | null = null;
             let departureTs: number | null = null;
             let wasStopped = false;
             let completed = false;
 
-            history.forEach(p => {
-                if (completed) return;
-                const dist = getDistance(p.lat, p.lng, stop.lat, stop.lng);
+            for (let i = 0; i < history.length; i++) {
+                if (completed) break;
+                const p = history[i];
+                let dist = getDistance(p.lat, p.lng, stop.lat, stop.lng);
+                
+                if (i > 0) {
+                    const prev = history[i-1];
+                    const segDist = pointLineDistance(prev.lat, prev.lng, p.lat, p.lng, stop.lat, stop.lng);
+                    if (segDist < dist) dist = segDist;
+                }
                 
                 if (dist <= 30) {
                     if (arrivalTs === null) {
@@ -155,7 +182,7 @@ export default function App() {
                     departureTs = p.ts;
                     completed = true;
                 }
-            });
+            }
 
             if (arrivalTs !== null) {
                 let durationMs = 0;
