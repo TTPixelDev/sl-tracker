@@ -53,7 +53,19 @@ app.get("/api/trip-events", async (req, res) => {
     const { tripId } = req.query;
     if (!tripId || typeof tripId !== "string") return res.status(400).json({ error: "Missing tripId" });
     const db = getDb("sl-times");
-    const events = await db.collection("stop_events").find({ t: tripId }).toArray();
+    
+    // Fetch the most recent event to determine the date of the latest run
+    const latestEvent = await db.collection("stop_events").findOne({ t: tripId }, { sort: { ts: -1 } });
+    if (!latestEvent) return res.status(200).json([]);
+
+    // If the latest event is older than 8 hours, it's from a previous day's run and shouldn't be matched with current live trip
+    if (Date.now() - latestEvent.ts > 8 * 60 * 60 * 1000) {
+      return res.status(200).json([]);
+    }
+
+    // Fetch all events for that specific trip run (same date as the recent event)
+    const events = await db.collection("stop_events").find({ t: tripId, d: latestEvent.d }).toArray();
+    
     res.status(200).json(events.map(e => ({
       stopId: e.s,
       stopped: e.st,
@@ -74,7 +86,14 @@ app.get("/api/trip-history", async (req, res) => {
     const db = getDb("sl-times");
     const trip = await db.collection("vehicle_trails").findOne({ tripId }, { projection: { trail: 1, _id: 0 } });
     if (!trip || !trip.trail) return res.status(200).json({ path: [] });
-    const path = (trip.trail as any[]).sort((a, b) => a.ts - b.ts).map(p => ({ lat: p.lat, lng: p.lng, ts: p.ts, delay: p.delay }));
+    
+    // Filter out old points from previous days
+    const cutoff = Date.now() - 3 * 60 * 60 * 1000;
+    const path = (trip.trail as any[])
+      .filter((p: any) => p.ts > cutoff)
+      .sort((a: any, b: any) => a.ts - b.ts)
+      .map(p => ({ lat: p.lat, lng: p.lng, ts: p.ts, delay: p.delay }));
+      
     res.status(200).json({ path });
   } catch (e: any) {
     res.status(200).json({ path: [] });

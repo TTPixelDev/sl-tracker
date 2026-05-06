@@ -65,6 +65,7 @@ async function runIngest() {
 
         await stopEventsCollection.createIndex({ ts: 1 }, { expireAfterSeconds: HISTORY_EXPIRE_DAYS * 24 * 60 * 60 });
         await stopEventsCollection.createIndex({ d: 1, l: 1, s: 1, sdm: 1 });
+        await stopEventsCollection.createIndex({ t: 1, ts: -1 });
         await trailsCollection.createIndex({ tripId: 1 }, { unique: true });
         await trailsCollection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
 
