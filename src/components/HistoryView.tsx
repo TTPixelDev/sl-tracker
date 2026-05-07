@@ -6,7 +6,7 @@ import { StopEvent, SearchResult } from '../types';
 import { slService } from '../services/slService';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { getLineColor, getTransportIcon } from './LiveMap';
+import { getLineColor, getTransportIcon } from '../utils/mapUtils';
 
 function cn(...inputs: any[]) {
   return twMerge(clsx(inputs));

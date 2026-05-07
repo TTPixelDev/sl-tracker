@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, Loader2, MapPin } from 'lucide-react';
 import { slService } from '../services/slService';
 import { SearchResult, SLLineRoute } from '../types';
-import { getTransportIcon } from './LiveMap';
+import { getTransportIcon } from '../utils/mapUtils';
 
 interface SearchBarProps {
   onSelect: (res: SearchResult) => void;

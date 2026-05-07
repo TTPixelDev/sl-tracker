@@ -182,14 +182,9 @@ class SLService {
   }
 
   async getLineStops(lineId: string): Promise<SLStop[]> {
-    try {
-      const res = await fetch(`/api/line-stops?lineId=${lineId}`);
-      if(res.ok) {
-        const data = await res.json();
-        return data.stops || [];
-      }
-    } catch(e) {}
-    // Fallback static
+    // Force use of static line route definitions for stop filtering
+    // because dynamic GTFS trips often include depot runs and strange variants
+    // which pollutes the history stop dropdown
     const r = await this.getLineRoute(lineId);
     return r ? r.stops : [];
   }

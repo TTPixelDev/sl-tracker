@@ -2,7 +2,7 @@ import React from 'react';
 import { SLVehicle } from '../types';
 import { Building2, Hash, Gauge, Activity, Bus, Train, Ship, TramFront, TrainFront as SubwayIcon } from 'lucide-react';
 import { SHIP_NAMES } from '../constants';
-import { getLineColor, getTransportIcon } from './LiveMap';
+import { getLineColor, getTransportIcon } from '../utils/mapUtils';
 
 interface VehiclePopupProps {
   vehicle: SLVehicle;

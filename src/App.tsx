@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { RefreshCw, Map as MapIcon, History as HistoryIcon, Trash2, X } from 'lucide-react';
 import { slService } from './services/slService';
 import { SLVehicle, SLLineRoute, SLStop, HistoryPoint } from './types';
-import LiveMap, { getLineColor, getTransportIcon } from './components/LiveMap';
+import LiveMap from './components/LiveMap';
+import { getLineColor, getTransportIcon } from './utils/mapUtils';
 import SearchBar from './components/SearchBar';
 import VehicleSearch from './components/VehicleSearch';
 import HistoryView from './components/HistoryView';
@@ -55,20 +56,24 @@ export default function App() {
     return () => clearInterval(i);
   }, [loading, agency, view]);
 
+  const activeVehicleIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (view !== 'live') return;
     if (selectedVehicleId) {
         const v = vehicles.find(x => x.id === selectedVehicleId);
         if (v && v.tripId) {
+            if (activeVehicleIdRef.current !== v.id) {
+                setHistory([]);
+                setTripEvents([]);
+                activeVehicleIdRef.current = v.id;
+            }
+            
             currentTripIdRef.current = v.tripId;
             const now = Date.now();
             
             if (activeTripIdRef.current !== v.tripId || now - lastHistoryFetchRef.current >= 5000) {
                 const isNewTrip = activeTripIdRef.current !== v.tripId;
-                if (isNewTrip) {
-                    setHistory([]);
-                    setTripEvents([]);
-                }
                 
                 activeTripIdRef.current = v.tripId;
                 lastHistoryFetchRef.current = now;

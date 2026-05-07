@@ -6,9 +6,25 @@ const app = express();
 app.use(express.json());
 
 let mongoClient: MongoClient | null = null;
+let indexesCreated = false;
+
 if (process.env.MONGODB_URI) {
   mongoClient = new MongoClient(process.env.MONGODB_URI);
-  mongoClient.connect().then(() => console.log("Connected to MongoDB")).catch(err => console.error("MongoDB start error:", err));
+  mongoClient.connect().then(() => {
+    console.log("Connected to MongoDB");
+    // Auto-create indexes in the background to prevent Vercel crashes
+    const db = mongoClient!.db("sl-times");
+    Promise.all([
+      db.collection("stop_events").createIndex({ d: 1, l: 1, s: 1, sdm: 1 }).catch(console.error),
+      db.collection("stop_events").createIndex({ t: 1, ts: -1 }).catch(console.error),
+      db.collection("stop_events").createIndex({ ts: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 }).catch(console.error),
+      db.collection("vehicle_trails").createIndex({ tripId: 1 }, { unique: true }).catch(console.error),
+      db.collection("vehicle_trails").createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(console.error)
+    ]).then(() => {
+      indexesCreated = true;
+      console.log("MongoDB indexes verified.");
+    });
+  }).catch(err => console.error("MongoDB start error:", err));
 } else {
   console.warn("MONGODB_URI is fully empty! Functionality requiring database will crash.");
 }
@@ -88,11 +104,15 @@ app.get("/api/trip-history", async (req, res) => {
     if (!trip || !trip.trail) return res.status(200).json({ path: [] });
     
     // Filter out old points from previous days
-    const cutoff = Date.now() - 3 * 60 * 60 * 1000;
-    const path = (trip.trail as any[])
-      .filter((p: any) => p.ts > cutoff)
-      .sort((a: any, b: any) => a.ts - b.ts)
-      .map(p => ({ lat: p.lat, lng: p.lng, ts: p.ts, delay: p.delay }));
+    const allPoints = (trip.trail as any[]).sort((a: any, b: any) => a.ts - b.ts);
+    let currentRunStartIndex = 0;
+    for (let i = 1; i < allPoints.length; i++) {
+        // If there's a gap of more than 1.5 hours between points, consider it a new run
+        if (allPoints[i].ts - allPoints[i-1].ts > 1.5 * 60 * 60 * 1000) {
+            currentRunStartIndex = i;
+        }
+    }
+    const path = allPoints.slice(currentRunStartIndex).map(p => ({ lat: p.lat, lng: p.lng, ts: p.ts, delay: p.delay }));
       
     res.status(200).json({ path });
   } catch (e: any) {
@@ -126,7 +146,8 @@ app.get("/api/data-range", async (req, res) => {
     const date = new Date(earliest[0].d);
     const diff = Math.max(0, new Date().getTime() - date.getTime());
     res.status(200).json({ days: Math.ceil(diff / (1000 * 3600 * 24)) });
-  } catch (e) {
+  } catch (e: any) {
+    console.error("Data range error:", e);
     res.status(200).json({ days: 0 });
   }
 });
