@@ -268,7 +268,7 @@ export default function HistoryView() {
             <Info className="w-5 h-5 shrink-0 text-blue-500 mt-0.5" />
             <div className="text-sm">
               <strong className="text-blue-900 font-bold block mb-0.5">Om saknad information</strong>
-              <p className="text-blue-800">Utebliven information för en avgång betyder inte nödvändigtvis att den var inställd. Det beror oftast på tekniska problem, till exempel att bussen inte kunnat loggas in eller spåras korrekt under sin tur.</p>
+              <p className="text-blue-800">Utebliven information för en avgång betyder inte nödvändigtvis att den var inställd. Det beror oftast på tekniska problem, till exempel att bussen inte kunnat loggas in eller spåras korrekt under sin tur. RUST är mer pålitlig än detta verktyg men detta är snabbare men använder endast data från SL:s offentliga API:er</p>
             </div>
           </div>
         )}
