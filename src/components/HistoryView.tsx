@@ -217,24 +217,6 @@ export default function HistoryView() {
         {/* Search Panel */}
         <section className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-8 mt-2">
           <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <SearchInput
-              label="Linje"
-              icon={<Search className="w-4 h-4" />}
-              placeholder="Ex: 4, 172..."
-              type="line"
-              value={selectedLine}
-              onSelect={setSelectedLine}
-            />
-            <SearchInput
-              label="Hållplats"
-              icon={<MapPin className="w-4 h-4" />}
-              placeholder={selectedLine ? "Välj hållplats..." : "Välj linje först"}
-              type="stop"
-              value={selectedStop}
-              onSelect={setSelectedStop}
-              disabled={!selectedLine}
-              predefinedResults={lineStops}
-            />
             <div className="space-y-1.5 flex-1 min-w-0">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Datum</label>
               <div className="relative">
@@ -259,6 +241,24 @@ export default function HistoryView() {
                 />
               </div>
             </div>
+            <SearchInput
+              label="Linje"
+              icon={<Search className="w-4 h-4" />}
+              placeholder="Ex: 4, 172..."
+              type="line"
+              value={selectedLine}
+              onSelect={setSelectedLine}
+            />
+            <SearchInput
+              label="Hållplats"
+              icon={<MapPin className="w-4 h-4" />}
+              placeholder={selectedLine ? "Välj hållplats..." : "Välj linje först"}
+              type="stop"
+              value={selectedStop}
+              onSelect={setSelectedStop}
+              disabled={!selectedLine}
+              predefinedResults={lineStops}
+            />
           </form>
         </section>
 
