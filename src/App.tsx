@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { RefreshCw, Map as MapIcon, History as HistoryIcon, Trash2, X } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import { slService } from './services/slService';
 import { SLVehicle, SLLineRoute, SLStop, HistoryPoint } from './types';
 import LiveMap from './components/LiveMap';
@@ -423,6 +424,7 @@ export default function App() {
       ) : (
           <HistoryView />
       )}
+      <Analytics />
     </div>
   );
 }
