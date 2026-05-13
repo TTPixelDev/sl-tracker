@@ -61,6 +61,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
               finalResults = res;
           }
 
+          finalResults.sort((a, b) => {
+              if (a.type === 'line' && b.type === 'line') {
+                  const numA = parseInt(a.title.replace(/\D/g, ''));
+                  const numB = parseInt(b.title.replace(/\D/g, ''));
+                  if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                  return a.title.localeCompare(b.title);
+              }
+              if (a.type === 'line') return -1;
+              if (b.type === 'line') return 1;
+              return a.title.localeCompare(b.title);
+          });
+
           setResults(finalResults);
           setShowResults(true);
         } catch (e) {
@@ -102,36 +114,39 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   return (
     <div ref={searchRef} className="relative w-full">
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-          ) : (
-            <Search className="h-5 w-5 text-slate-400" />
+      <div className="bg-slate-900/90 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl flex flex-col gap-2">
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            {loading ? (
+              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+            ) : (
+              <Search className="h-5 w-5 text-slate-400" />
+            )}
+          </div>
+          <input
+            type="text"
+            className="w-full bg-slate-800/50 text-white placeholder-slate-500 text-sm rounded-xl pl-10 pr-10 py-2.5 block outline-none focus:bg-slate-800 transition-colors border border-transparent focus:border-blue-500/30"
+
+            placeholder={currentAgency === 'WAAB' ? "Sök linje eller brygga..." : "Sök linje eller hållplats..."}
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+                if (searchQuery.trim().length > 0) setShowResults(true);
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                  onSearchChange('');
+                  setResults([]);
+              }}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
           )}
         </div>
-        <input
-          type="text"
-          className="block w-full pl-10 pr-10 py-3 border border-white/10 rounded-2xl leading-5 bg-slate-900/95 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 sm:text-sm backdrop-blur-xl shadow-2xl transition-all"
-          placeholder={currentAgency === 'WAAB' ? "Sök linje eller brygga..." : "Sök linje eller hållplats..."}
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => {
-              if (searchQuery.trim().length > 0) setShowResults(true);
-          }}
-        />
-        {searchQuery && (
-          <button
-            onClick={() => {
-                onSearchChange('');
-                setResults([]);
-            }}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
       </div>
 
       {showResults && results.length > 0 && (

@@ -283,19 +283,21 @@ export default function App() {
       
       {/* Top Toggle Switch & Global Header */}
       <div className="absolute top-6 right-6 z-[3000] pointer-events-auto">
-         <div className="bg-slate-800/90 backdrop-blur-xl p-1 rounded-xl flex border border-white/10 shadow-2xl">
-            <button 
-              onClick={() => setView('live')} 
-              className={cn("flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all", view === 'live' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white')}
-            >
-              <MapIcon className="w-4 h-4" /> Live
-            </button>
-            <button 
-              onClick={() => setView('history')} 
-              className={cn("flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all", view === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white')}
-            >
-              <HistoryIcon className="w-4 h-4" /> Historik
-            </button>
+         <div className="bg-slate-900/90 backdrop-blur-xl p-2 rounded-2xl flex border border-white/10 shadow-2xl">
+            <div className="bg-slate-800/50 p-1 rounded-xl flex border border-white/5">
+                <button 
+                  onClick={() => setView('live')} 
+                  className={cn("flex flex-1 items-center justify-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all", view === 'live' ? 'bg-[#3b82f6] text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:text-white')}
+                >
+                  <MapIcon className="w-4 h-4" /> Live
+                </button>
+                <button 
+                  onClick={() => setView('history')} 
+                  className={cn("flex flex-1 items-center justify-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all", view === 'history' ? 'bg-[#3b82f6] text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:text-white')}
+                >
+                  <HistoryIcon className="w-4 h-4" /> Historik
+                </button>
+            </div>
          </div>
       </div>
 
@@ -359,13 +361,13 @@ export default function App() {
             </div>
 
             <div className="absolute bottom-6 left-6 right-6 z-[1000] flex flex-col sm:flex-row justify-between items-end gap-4 pointer-events-none">
-                <div className="bg-slate-900/90 backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-white/10 pointer-events-auto w-full sm:w-auto sm:min-w-[280px]">
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 flex items-center justify-between border-b border-white/5 pb-2">
+                <div className="bg-slate-900/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-white/10 pointer-events-auto w-full sm:w-auto sm:min-w-[280px]">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-3 flex items-center justify-between border-b border-white/5 pb-2">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /> Live Status
                         </div>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         <div className="flex items-center justify-between gap-4 px-1">
                             <span className="text-xs text-slate-300 font-bold">{selectedRoutes.length > 0 ? `Fordon på valda linjer` : 'Fordon i trafik'}</span>
                             <span className="text-xs text-white font-bold bg-slate-800/50 px-2.5 py-1.5 rounded-xl border border-white/5 shadow-inner">

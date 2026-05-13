@@ -208,11 +208,6 @@ export default function HistoryView() {
 
   return (
     <div className="absolute inset-0 bg-[#F0F2F5] overflow-y-auto w-full z-[100] top-0 pt-24 text-slate-900 font-sans pb-20">
-      <div className="hidden md:flex absolute top-6 left-6 items-center gap-2 text-slate-500 font-bold uppercase tracking-widest text-xs">
-        <Info className="w-4 h-4" />
-        <span>Sparad Historik: {historyDays !== null ? `${historyDays} ${historyDays === 1 ? 'dag' : 'dagar'}` : '...'}</span>
-      </div>
-      
       <main className="max-w-6xl mx-auto px-4">
         {/* Search Panel */}
         <section className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-8 mt-2">
@@ -268,8 +263,7 @@ export default function HistoryView() {
             <Info className="w-5 h-5 shrink-0 text-blue-500 mt-0.5" />
             <div className="text-sm">
               <strong className="text-blue-900 font-bold block mb-0.5">Om saknad information</strong>
-              <p className="text-blue-800">Utebliven information för en avgång betyder inte nödvändigtvis att den var inställd. Det beror oftast på tekniska problem, till exempel att bussen inte kunnat loggas in eller spåras korrekt under sin tur. RUST är mer pålitlig än detta verktyg men detta är snabbare men använder endast data från SL:s offentliga API:er.</p>
-              <p className="text-blue-800 mt-2">Hittar du avgången här så är informationen korrekt men hittar du inte avgången så sök vidare i andra verktyg.</p>
+              <p className="text-blue-800">Utebliven information för en avgång betyder inte nödvändigtvis att den var inställd. Det beror oftast på tekniska problem, till exempel att bussen inte kunnat loggas in eller spåras korrekt under sin tur.</p>
             </div>
           </div>
         )}
@@ -325,6 +319,16 @@ export default function HistoryView() {
             )}
           </AnimatePresence>
         </section>
+
+        {/* Footer Statistics */}
+        <footer className="mt-12 flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-widest border-t border-slate-200 pt-6">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5"><Activity className="w-4 h-4 text-slate-400" /> Visar {events.length} träffar</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Info className="w-4 h-4 text-slate-400" /> Sparad Historik: {historyDays !== null ? `${historyDays} ${historyDays === 1 ? 'dag' : 'dagar'}` : 'hämtar...'}
+          </div>
+        </footer>
       </main>
     </div>
   );
