@@ -74,7 +74,7 @@ const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAg
   };
 
   return (
-    <div ref={containerRef} className="relative bg-slate-900/90 backdrop-blur-xl border border-white/10 p-3 rounded-2xl shadow-2xl flex flex-col gap-3 w-full sm:w-auto sm:min-w-[280px]">
+    <div ref={containerRef} className="relative bg-slate-900/90 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl flex flex-col gap-3 w-full sm:w-auto sm:min-w-[280px]">
       <div className="bg-slate-800/50 p-1 rounded-xl flex border border-white/5">
         <button 
           onClick={() => onAgencyChange('SL')} 

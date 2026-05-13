@@ -282,7 +282,7 @@ export default function App() {
     <div className="relative w-full h-screen flex flex-col overflow-hidden bg-slate-900">
       
       {/* Top Toggle Switch & Global Header */}
-      <div className="absolute top-4 right-4 z-[3000] pointer-events-auto">
+      <div className="absolute top-6 right-6 z-[3000] pointer-events-auto">
          <div className="bg-slate-800/90 backdrop-blur-xl p-1 rounded-xl flex border border-white/10 shadow-2xl">
             <button 
               onClick={() => setView('live')} 
