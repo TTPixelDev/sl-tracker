@@ -90,11 +90,19 @@ const getDuration = (arrival: string | null, departure: string | null) => {
 
 export default function HistoryView() {
   const [date, setDate] = useState(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const urlDate = params.get('hDate');
+    if (urlDate) return urlDate;
+    
     const d = new Date();
     d.setHours(d.getHours() - 1);
     return format(d, 'yyyy-MM-dd');
   });
   const [time, setTime] = useState(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const urlTime = params.get('hTime');
+    if (urlTime) return urlTime;
+    
     const d = new Date();
     d.setHours(d.getHours() - 1);
     return format(d, 'HH:mm');
@@ -108,9 +116,99 @@ export default function HistoryView() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isRestoringUrlRef = React.useRef(typeof window !== 'undefined' ? !!new URLSearchParams(window.location.search).get('hLine') : false);
+
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  // Load and apply URL parameters once on mount
+  useEffect(() => {
+    const initFromUrl = async () => {
+      const queryParams = new URLSearchParams(window.location.search);
+      const urlLineId = queryParams.get('hLine');
+      const urlStopId = queryParams.get('hStop');
+      
+      if (urlLineId) {
+        await slService.initialize();
+        const r = await slService.getLineRoute(urlLineId);
+        if (r) {
+          const lineResult: SearchResult = {
+            type: 'line',
+            id: r.id,
+            title: `Linje ${r.line}`,
+            subtitle: r.stops && r.stops.length > 0 ? `${r.stops[0].name} - ${r.stops[r.stops.length - 1].name}` : '',
+            agency: r.agency
+          };
+          
+          if (urlStopId) {
+            const stops = r.stops || [];
+            const stopGroups = new Map<string, string[]>();
+            stops.forEach((st: any) => {
+              const group = stopGroups.get(st.name) || [];
+              group.push(st.id);
+              stopGroups.set(st.name, group);
+            });
+            const uniqueStops: SearchResult[] = Array.from(stopGroups.entries()).map(([name, ids]) => ({
+              type: 'stop',
+              id: ids.join(','),
+              title: name,
+              subtitle: 'Hållplats'
+            }));
+            
+            const matchedStop = uniqueStops.find(st => {
+              const parts = st.id.split(',');
+              const searchParts = urlStopId.split(',');
+              return parts.some(p => searchParts.includes(p)) || searchParts.some(sp => parts.includes(sp));
+            });
+            
+            setLineStops(uniqueStops);
+            setSelectedLine(lineResult);
+            if (matchedStop) {
+              setSelectedStop(matchedStop);
+            }
+          } else {
+            setSelectedLine(lineResult);
+          }
+        }
+      }
+      
+      setTimeout(() => {
+        isRestoringUrlRef.current = false;
+      }, 100);
+    };
+    initFromUrl();
+  }, []);
+
+  // Sync state changes to browser URL query parameters
+  useEffect(() => {
+    if (isRestoringUrlRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    
+    params.set('view', 'history');
+    params.set('hDate', date);
+    params.set('hTime', time);
+    
+    if (selectedLine) {
+      params.set('hLine', selectedLine.id);
+    } else {
+      params.delete('hLine');
+    }
+    
+    if (selectedStop) {
+      params.set('hStop', selectedStop.id);
+    } else {
+      params.delete('hStop');
+    }
+    
+    // Clean live parameters when in history view
+    params.delete('lines');
+    params.delete('stop');
+    params.delete('vehicle');
+    
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+  }, [date, time, selectedLine, selectedStop]);
 
   useEffect(() => {
     const fetchRange = async () => {
@@ -126,6 +224,7 @@ export default function HistoryView() {
   }, []);
 
   useEffect(() => {
+    if (isRestoringUrlRef.current) return;
     if (selectedLine) {
       setSelectedStop(null);
       slService.getLineStops(selectedLine.id).then((stops: any) => {

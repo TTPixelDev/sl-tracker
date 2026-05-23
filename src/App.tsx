@@ -16,11 +16,19 @@ function cn(...inputs: any[]) {
 }
 
 export default function App() {
-  const [view, setView] = useState<'live' | 'history'>('live');
+  const [view, setView] = useState<'live' | 'history'>(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const v = params.get('view');
+    return v === 'history' ? 'history' : 'live';
+  });
   const [loading, setLoading] = useState(true);
   
   // Live state
-  const [agency, setAgency] = useState<'SL' | 'WAAB'>('SL');
+  const [agency, setAgency] = useState<'SL' | 'WAAB'>(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const a = params.get('agency');
+    return a === 'WAAB' ? 'WAAB' : 'SL';
+  });
   const [vehicles, setVehicles] = useState<SLVehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedRoutes, setSelectedRoutes] = useState<SLLineRoute[]>([]);
@@ -44,6 +52,85 @@ export default function App() {
       setLoading(false);
     })();
   }, []);
+
+  // Sync state changes to browser URL query parameters
+  useEffect(() => {
+    if (loading) return;
+    const params = new URLSearchParams(window.location.search);
+    
+    params.set('view', view);
+    params.set('agency', agency);
+    
+    if (view === 'live') {
+      if (selectedRoutes.length > 0) {
+        params.set('lines', selectedRoutes.map(r => r.id).join(','));
+      } else {
+        params.delete('lines');
+      }
+      
+      if (activeStop) {
+        params.set('stop', activeStop.id);
+      } else {
+        params.delete('stop');
+      }
+      
+      if (selectedVehicleId) {
+        params.set('vehicle', selectedVehicleId);
+      } else {
+        params.delete('vehicle');
+      }
+      
+      // Clean history parameters when on live map
+      params.delete('hDate');
+      params.delete('hTime');
+      params.delete('hLine');
+      params.delete('hStop');
+    }
+    
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+  }, [view, agency, selectedRoutes, activeStop, selectedVehicleId, loading]);
+
+  // Load and apply URL parameters once initialization is complete
+  useEffect(() => {
+    if (loading) return;
+    
+    const initParams = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const linesParam = params.get('lines');
+      const stopParam = params.get('stop');
+      const vehicleParam = params.get('vehicle');
+      
+      if (linesParam) {
+        const lineIds = linesParam.split(',');
+        const loadedRoutes: SLLineRoute[] = [];
+        for (const id of lineIds) {
+          const r = await slService.getLineRoute(id);
+          if (r) loadedRoutes.push(r);
+        }
+        if (loadedRoutes.length > 0) {
+          setSelectedRoutes(loadedRoutes);
+          const b = L.latLngBounds(loadedRoutes.flatMap(route => route.path));
+          setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+        }
+      }
+      
+      if (stopParam) {
+        const s = await slService.getStopInfo(stopParam);
+        if (s) {
+          setActiveStop(s);
+          if (!linesParam) {
+            setMapConfig({ center: [s.lat, s.lng], zoom: 16 });
+          }
+        }
+      }
+      
+      if (vehicleParam) {
+        setSelectedVehicleId(vehicleParam);
+      }
+    };
+    initParams();
+  }, [loading]);
 
   useEffect(() => {
     if (loading || view !== 'live') return;
