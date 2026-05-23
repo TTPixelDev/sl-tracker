@@ -500,6 +500,7 @@ export default function App() {
               setActiveStop={setActiveStop}
               stopPassages={stopPassages}
               history={history}
+              tripEvents={tripEvents}
             />
         </>
       ) : (

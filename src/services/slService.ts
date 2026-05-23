@@ -307,7 +307,8 @@ class SLService {
                 destination: headsign,
                 type: routeManifest.agency === 'WAAB' ? 'Färja' : 'Buss',
                 agency: routeManifest.agency,
-                delay: info?.delay
+                delay: info?.delay,
+                directionId: directionId !== undefined && directionId !== null ? Number(directionId) : undefined
             });
         }
         return vehicles;

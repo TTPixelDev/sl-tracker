@@ -23,6 +23,7 @@ export interface SLStop {
   lng: number;
   lines?: string[];
   agency?: 'SL' | 'WAAB';
+  directions?: number[];
 }
 
 export interface SLVehicle {
@@ -39,6 +40,7 @@ export interface SLVehicle {
   type: 'Buss' | 'Tåg' | 'Tunnelbana' | 'Spårvagn' | 'Färja';
   delay?: number; 
   agency?: 'SL' | 'WAAB';
+  directionId?: number;
 }
 
 export interface SLLineRoute {

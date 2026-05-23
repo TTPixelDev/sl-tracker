@@ -120,7 +120,7 @@ const EventController = ({ onMapClick }: { onMapClick: () => void }) => {
   return null;
 };
 
-export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history }: any) {
+export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents }: any) {
   return (
       <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} zoomControl={false} className="flex-1 w-full h-full z-0">
         <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
@@ -129,10 +129,53 @@ export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVeh
         
         {selectedRoutes.map((route: any) => {
             const standardColor = route.agency === 'WAAB' ? "#0891b2" : "#3b82f6";
+            
+            // Filter stops based on whether a vehicle is selected or not
+            let stopsToRender = route.stops || [];
+            const selectedVehicle = vehicles.find((v: any) => v.id === selectedVehicleId);
+            const isThisVehicleSelected = selectedVehicle && selectedVehicle.line === route.id;
+
+            if (isThisVehicleSelected) {
+                const dirId = selectedVehicle.directionId;
+                
+                // 1. Initial filter based on direction
+                let candidates = [];
+                if (dirId !== undefined) {
+                    candidates = (route.stops || []).filter((s: any) => s.directions && s.directions.includes(dirId));
+                }
+                
+                // Fall back if no candidates found or direction was undefined
+                if (candidates.length === 0) {
+                    candidates = route.stops || [];
+                }
+
+                // 2. Clear any name duplicates from candidates to avoid opposite/dual platform circles
+                const seenNames = new Set<string>();
+                stopsToRender = [];
+                for (const s of candidates) {
+                    const normalizedName = s.name.trim().toLowerCase();
+                    if (!seenNames.has(normalizedName)) {
+                        seenNames.add(normalizedName);
+                        stopsToRender.push(s);
+                    }
+                }
+            } else {
+                // Deduplicate stops by name to avoid overlapping/dual opposite platform points
+                const seenNames = new Set<string>();
+                stopsToRender = [];
+                for (const s of (route.stops || [])) {
+                    const normalizedName = s.name.trim().toLowerCase();
+                    if (!seenNames.has(normalizedName)) {
+                        seenNames.add(normalizedName);
+                        stopsToRender.push(s);
+                    }
+                }
+            }
+
             return (
             <React.Fragment key={route.id}>
                 <Polyline positions={route.path} color={standardColor} weight={6} opacity={0.6} />
-                {route.stops.map((s: any, stopIndex: number) => {
+                {stopsToRender.map((s: any, stopIndex: number) => {
                     const passage = stopPassages.get(s.id);
                     let markerFill = "#ffffff";
                     if (passage) markerFill = passage.stopped ? "#10b981" : "#f59e0b";

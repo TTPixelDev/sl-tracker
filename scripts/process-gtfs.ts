@@ -246,11 +246,22 @@ async function processGTFS() {
             const stopsMapForRoute = new Map<string, any>();
             stimes0.forEach(st => {
                 const s = allStopsMap.get(st.stop_id);
-                if (s) stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency });
+                if (s) {
+                    stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency, directions: [0] });
+                }
             });
             stimes1.forEach(st => {
                 const s = allStopsMap.get(st.stop_id);
-                if (s) stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency });
+                if (s) {
+                    const existing = stopsMapForRoute.get(s.id);
+                    if (existing) {
+                        if (!existing.directions.includes(1)) {
+                            existing.directions.push(1);
+                        }
+                    } else {
+                        stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency, directions: [1] });
+                    }
+                }
             });
 
             const stops = Array.from(stopsMapForRoute.values());
