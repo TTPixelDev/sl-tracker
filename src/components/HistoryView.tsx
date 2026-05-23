@@ -12,6 +12,17 @@ function cn(...inputs: any[]) {
   return twMerge(clsx(inputs));
 }
 
+const formatSwedishDate = (dateStr: string) => {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const formatted = new Intl.DateTimeFormat('sv-SE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  } catch (e) {
+    return dateStr;
+  }
+};
+
 const formatGtfsTime = (timeStr: string | null) => {
   if (!timeStr) return '--:--';
   const parts = timeStr.split(':');
@@ -269,6 +280,22 @@ export default function HistoryView() {
         )}
 
         {/* Results */}
+        {selectedLine && selectedStop && (
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between px-2 mb-4 gap-2">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-400" />
+                Sökdatum: <span className="text-blue-600 font-extrabold">{formatSwedishDate(date)}</span>
+              </h2>
+            </div>
+            {events.length > 0 && (
+              <span className="text-xs text-slate-400 font-medium italic">
+                Visar avgångar i anslutning till {time} och framåt/bakåt.
+              </span>
+            )}
+          </div>
+        )}
+
         <section className="space-y-4">
           <AnimatePresence mode="popLayout">
             {events.length > 0 && (() => {
@@ -282,9 +309,29 @@ export default function HistoryView() {
               );
             })()}
 
-            {events.map((event, idx) => (
-              <EventCard key={event.id ? event.id : 'event-' + event.tripId + '-' + idx} event={event} lineName={selectedLine?.title ? selectedLine.title : 'Linje ' + event.line} />
-            ))}
+            {(() => {
+              let lastDate = "";
+              return events.map((event, idx) => {
+                const showDateHeader = event.date !== lastDate;
+                if (showDateHeader) {
+                  lastDate = event.date;
+                }
+                return (
+                  <React.Fragment key={event.id ? event.id : 'event-' + event.tripId + '-' + idx}>
+                    {showDateHeader && (
+                      <div className="pt-6 pb-2 first:pt-0 flex items-center gap-3">
+                        <span className="text-xs font-black text-slate-500 bg-slate-200/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 border border-slate-300/30">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {formatSwedishDate(event.date)}
+                        </span>
+                        <div className="h-[1px] bg-slate-200 flex-1"></div>
+                      </div>
+                    )}
+                    <EventCard event={event} lineName={selectedLine?.title ? selectedLine.title : 'Linje ' + event.line} />
+                  </React.Fragment>
+                );
+              });
+            })()}
 
             {events.length > 0 && (() => {
               const [h, m] = time.split(':').map(Number);
@@ -301,7 +348,9 @@ export default function HistoryView() {
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
                 <RefreshCcw className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                 <h3 className="text-lg font-bold text-slate-700">Inga avgångar hittades</h3>
-                <p className="text-slate-500 mt-1">Sökparametrar kan vara tomma eller ingen historik finns.</p>
+                <p className="text-slate-500 mt-2 px-4 max-w-xl mx-auto">
+                  Det finns ingen sparad historik för <span className="font-semibold text-slate-700">{selectedLine.title}</span> vid <span className="font-semibold text-slate-700">{selectedStop.title}</span> den <span className="font-bold text-blue-600">{formatSwedishDate(date)}</span> från kl. <span className="font-semibold text-slate-700">{time}</span> under den valda tidsperioden.
+                </p>
               </motion.div>
             )}
 
