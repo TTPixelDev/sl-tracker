@@ -49,6 +49,40 @@ export default function App() {
       await slService.initialize();
       const m = await slService.getManifest();
       setRouteManifest(new Map(m.map((x: any) => [x.id, x])));
+
+      const params = new URLSearchParams(window.location.search);
+      const linesParam = params.get('lines');
+      const stopParam = params.get('stop');
+      const vehicleParam = params.get('vehicle');
+      
+      if (linesParam) {
+        const lineIds = linesParam.split(',');
+        const loadedRoutes: SLLineRoute[] = [];
+        for (const id of lineIds) {
+          const r = await slService.getLineRoute(id);
+          if (r) loadedRoutes.push(r);
+        }
+        if (loadedRoutes.length > 0) {
+          setSelectedRoutes(loadedRoutes);
+          const b = L.latLngBounds(loadedRoutes.flatMap(route => route.path));
+          setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+        }
+      }
+      
+      if (stopParam) {
+        const s = await slService.getStopInfo(stopParam);
+        if (s) {
+          setActiveStop(s);
+          if (!linesParam) {
+            setMapConfig({ center: [s.lat, s.lng], zoom: 16 });
+          }
+        }
+      }
+      
+      if (vehicleParam) {
+        setSelectedVehicleId(vehicleParam);
+      }
+
       setLoading(false);
     })();
   }, []);
@@ -90,47 +124,6 @@ export default function App() {
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
   }, [view, agency, selectedRoutes, activeStop, selectedVehicleId, loading]);
-
-  // Load and apply URL parameters once initialization is complete
-  useEffect(() => {
-    if (loading) return;
-    
-    const initParams = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const linesParam = params.get('lines');
-      const stopParam = params.get('stop');
-      const vehicleParam = params.get('vehicle');
-      
-      if (linesParam) {
-        const lineIds = linesParam.split(',');
-        const loadedRoutes: SLLineRoute[] = [];
-        for (const id of lineIds) {
-          const r = await slService.getLineRoute(id);
-          if (r) loadedRoutes.push(r);
-        }
-        if (loadedRoutes.length > 0) {
-          setSelectedRoutes(loadedRoutes);
-          const b = L.latLngBounds(loadedRoutes.flatMap(route => route.path));
-          setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
-        }
-      }
-      
-      if (stopParam) {
-        const s = await slService.getStopInfo(stopParam);
-        if (s) {
-          setActiveStop(s);
-          if (!linesParam) {
-            setMapConfig({ center: [s.lat, s.lng], zoom: 16 });
-          }
-        }
-      }
-      
-      if (vehicleParam) {
-        setSelectedVehicleId(vehicleParam);
-      }
-    };
-    initParams();
-  }, [loading]);
 
   useEffect(() => {
     if (loading || view !== 'live') return;
