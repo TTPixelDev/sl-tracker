@@ -6,32 +6,104 @@ const app = express();
 app.use(express.json());
 
 let mongoClient: MongoClient | null = null;
-let indexesCreated = false;
+let clientPromise: Promise<MongoClient> | null = null;
+let indexesPromise: Promise<any> | null = null;
 
-if (process.env.MONGODB_URI) {
-  mongoClient = new MongoClient(process.env.MONGODB_URI);
-  mongoClient.connect().then(() => {
-    console.log("Connected to MongoDB");
-    // Auto-create indexes in the background to prevent Vercel crashes
-    const db = mongoClient!.db("sl-times");
-    Promise.all([
-      db.collection("stop_events").createIndex({ d: 1, l: 1, s: 1, sdm: 1 }).catch(console.error),
-      db.collection("stop_events").createIndex({ t: 1, ts: -1 }).catch(console.error),
-      db.collection("stop_events").createIndex({ ts: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 }).catch(console.error),
-      db.collection("vehicle_trails").createIndex({ tripId: 1 }, { unique: true }).catch(console.error),
-      db.collection("vehicle_trails").createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(console.error)
-    ]).then(() => {
-      indexesCreated = true;
-      console.log("MongoDB indexes verified.");
-    });
-  }).catch(err => console.error("MongoDB start error:", err));
-} else {
-  console.warn("MONGODB_URI is fully empty! Functionality requiring database will crash.");
+function handleDbError(err: any) {
+  if (!err) return;
+  const errMsg = String(err.message || err || "");
+  if (
+    errMsg.toLowerCase().includes("closed") || 
+    errMsg.toLowerCase().includes("topology") || 
+    err.name === "MongoTopologyClosedError" || 
+    err.name === "MongoNetworkError"
+  ) {
+    console.warn("Database connection issue detected (such as closed topology). Resetting connection cache so next operation triggers a fresh reconnect:", errMsg);
+    resetConnection();
+  }
 }
 
-const getDb = (dbName: string) => {
-  if (!mongoClient) throw new Error("No Mongo Client");
-  return mongoClient.db(dbName);
+function resetConnection() {
+  if (mongoClient) {
+    try {
+      mongoClient.close().catch(() => {});
+    } catch (e) {}
+  }
+  mongoClient = null;
+  clientPromise = null;
+}
+
+async function ensureIndexes(db: any) {
+  if (indexesPromise) return;
+  
+  indexesPromise = Promise.all([
+    db.collection("stop_events").createIndex({ d: 1, l: 1, s: 1, sdm: 1 }).catch(console.error),
+    db.collection("stop_events").createIndex({ t: 1, ts: -1 }).catch(console.error),
+    db.collection("stop_events").createIndex({ ts: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 }).catch(console.error),
+    db.collection("vehicle_trails").createIndex({ tripId: 1 }, { unique: true }).catch(console.error),
+    db.collection("vehicle_trails").createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(console.error)
+  ]).then(() => {
+    console.log("MongoDB indexes verified.");
+  }).catch((err) => {
+    console.error("Failed to verify indexes:", err);
+    indexesPromise = null;
+  });
+}
+
+async function getConnectedClient(): Promise<MongoClient> {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("MONGODB_URI is fully empty! Cannot connect to database.");
+  }
+
+  if (!clientPromise) {
+    console.log("Initializing a fresh MongoClient instance...");
+    const client = new MongoClient(uri, {
+      maxPoolSize: 10,
+      minPoolSize: 1,
+      connectTimeoutMS: 15000,
+      socketTimeoutMS: 45000,
+    });
+
+    clientPromise = client.connect().then((connectedClient) => {
+      console.log("Connected to MongoDB successfully.");
+      mongoClient = connectedClient;
+
+      connectedClient.on("close", () => {
+        console.warn("MongoClient received a 'close' event. Deregistering cached client.");
+        if (mongoClient === connectedClient) {
+          mongoClient = null;
+          clientPromise = null;
+        }
+      });
+
+      ensureIndexes(connectedClient.db("sl-times"));
+      return connectedClient;
+    }).catch((err) => {
+      console.error("MongoDB connection failed:", err);
+      mongoClient = null;
+      clientPromise = null;
+      throw err;
+    });
+  }
+
+  try {
+    return await clientPromise;
+  } catch (err) {
+    mongoClient = null;
+    clientPromise = null;
+    throw err;
+  }
+}
+
+const getDb = async (dbName: string) => {
+  try {
+    const client = await getConnectedClient();
+    return client.db(dbName);
+  } catch (err) {
+    handleDbError(err);
+    throw err;
+  }
 };
 
 app.get("/api/gtfs-rt", async (req, res) => {
@@ -68,7 +140,7 @@ app.get("/api/trip-events", async (req, res) => {
   try {
     const { tripId } = req.query;
     if (!tripId || typeof tripId !== "string") return res.status(400).json({ error: "Missing tripId" });
-    const db = getDb("sl-times");
+    const db = await getDb("sl-times");
     
     // Fetch the most recent event to determine the date of the latest run
     const latestEvent = await db.collection("stop_events").findOne({ t: tripId }, { sort: { ts: -1 } });
@@ -91,6 +163,7 @@ app.get("/api/trip-events", async (req, res) => {
       scheduledArrival: e.sa
     })));
   } catch (e: any) {
+    handleDbError(e);
     res.status(200).json([]);
   }
 });
@@ -99,7 +172,7 @@ app.get("/api/trip-history", async (req, res) => {
   try {
     const { tripId } = req.query;
     if (!tripId || typeof tripId !== "string") return res.status(400).json({ error: "Missing tripId" });
-    const db = getDb("sl-times");
+    const db = await getDb("sl-times");
     const trip = await db.collection("vehicle_trails").findOne({ tripId }, { projection: { trail: 1, _id: 0 } });
     if (!trip || !trip.trail) return res.status(200).json({ path: [] });
     
@@ -116,13 +189,14 @@ app.get("/api/trip-history", async (req, res) => {
       
     res.status(200).json({ path });
   } catch (e: any) {
+    handleDbError(e);
     res.status(200).json({ path: [] });
   }
 });
 
 app.get("/api/status", async (req, res) => {
   try {
-    const db = getDb("sl-times");
+    const db = await getDb("sl-times");
     const status = await db.collection("status").findOne({ _id: "ingest_status" as any });
     if (!status) return res.status(200).json({ online: false, text: "Ingen status", lastUpdate: null });
     const isOnline = (Date.now() - (status.lastUpdate ? new Date(status.lastUpdate).getTime() : 0)) < 180000;
@@ -133,14 +207,15 @@ app.get("/api/status", async (req, res) => {
       tracking: status.tracking || 0,
       savedToday: status.savedToday || 0
     });
-  } catch (e) {
+  } catch (e: any) {
+    handleDbError(e);
     res.status(200).json({ online: false, text: "Ingen status", lastUpdate: null });
   }
 });
 
 app.get("/api/data-range", async (req, res) => {
   try {
-    const db = getDb("sl-times");
+    const db = await getDb("sl-times");
     const earliest = await db.collection("stop_events").find({}, { projection: { d: 1 } }).sort({ d: 1 }).limit(1).toArray();
     if (!earliest.length || !earliest[0].d) return res.status(200).json({ days: 0 });
     const date = new Date(earliest[0].d);
@@ -148,6 +223,7 @@ app.get("/api/data-range", async (req, res) => {
     res.status(200).json({ days: Math.ceil(diff / (1000 * 3600 * 24)) });
   } catch (e: any) {
     console.error("Data range error:", e);
+    handleDbError(e);
     res.status(200).json({ days: 0 });
   }
 });
@@ -156,8 +232,7 @@ app.get("/api/search", async (req, res) => {
   try {
     const { q, type } = req.query;
     if (typeof q !== "string" || !q) return res.status(200).json([]);
-    if (!mongoClient) return res.status(200).json([]);
-    const db = getDb("sl-times");
+    const db = await getDb("sl-times");
     if (type === "stop") {
       const stops = await db.collection("stops").find({ name: { $regex: q, $options: "i" } }).limit(15).toArray();
       return res.status(200).json(stops.map(s => ({ type: "stop", id: s.id, title: s.name, subtitle: "Hållplats" })));
@@ -167,7 +242,8 @@ app.get("/api/search", async (req, res) => {
       }).limit(15).toArray();
       return res.status(200).json(routes.map(r => ({ type: "line", id: r.id, title: `Linje ${r.shortName}`, subtitle: r.longName })));
     }
-  } catch (e) {
+  } catch (e: any) {
+    handleDbError(e);
     res.status(200).json([]);
   }
 });
@@ -176,13 +252,14 @@ app.get("/api/line-stops", async (req, res) => {
   try {
     const { lineId } = req.query;
     if (typeof lineId !== "string" || !lineId) return res.status(200).json({ stops: [] });
-    const db = getDb("sl-times");
+    const db = await getDb("sl-times");
     const trips = await db.collection("trips").find({ routeId: lineId }).toArray();
     const sIds = new Set<string>();
     trips.forEach(t => t.stops?.forEach((s: any) => { if (s.id) sIds.add(String(s.id)); }));
     const stops = await db.collection("stops").find({ id: { $in: Array.from(sIds) } }).toArray();
     return res.status(200).json({ stops: stops.sort((a,b) => a.name.localeCompare(b.name)) });
-  } catch (e) {
+  } catch (e: any) {
+    handleDbError(e);
     res.status(200).json({ stops: [] });
   }
 });
@@ -208,7 +285,7 @@ app.get("/api/history", async (req, res) => {
   try {
     const { date, lineId, stopId, time, offset = 0, limit = 5, direction = "next" } = req.query;
     if (!date || !lineId || !stopId || !time) return res.status(400).json({ error: "Missing parameters" });
-    const db = getDb("sl-times");
+    const db = await getDb("sl-times");
     const timeStr = time as string;
     const [h, m] = timeStr.split(":").map(Number);
     const searchMinutes = h * 60 + m;
@@ -275,7 +352,8 @@ app.get("/api/history", async (req, res) => {
 
     if (direction === "prev") events.reverse();
     return res.status(200).json(events);
-  } catch(e) {
+  } catch(e: any) {
+    handleDbError(e);
     res.status(200).json([]);
   }
 });
