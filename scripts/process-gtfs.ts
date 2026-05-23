@@ -92,7 +92,10 @@ async function processGTFS() {
         console.log('[2/6] Kartlägger resor och väljer representativa turer...');
         const tripToRouteMap = new Map<string, string>();
         const tripToShapeId = new Map<string, string>();
+        const tripToDirection = new Map<string, string>();
         const routeToBestTrip = new Map<string, string>();
+        const routeToBestTripDir0 = new Map<string, string>();
+        const routeToBestTripDir1 = new Map<string, string>();
         const tripStopCounts = new Map<string, number>();
 
         interface ProcessedTrip {
@@ -107,6 +110,7 @@ async function processGTFS() {
             if (validRouteIds.has(row.route_id)) {
                 tripToRouteMap.set(row.trip_id, row.route_id);
                 if (row.shape_id) tripToShapeId.set(row.trip_id, row.shape_id);
+                tripToDirection.set(row.trip_id, row.direction_id ?? '0');
 
                 tripsProcessed.set(row.trip_id, {
                     _id: row.trip_id,
@@ -130,11 +134,28 @@ async function processGTFS() {
             if (!currentBest || count > (tripStopCounts.get(currentBest) || 0)) {
                 routeToBestTrip.set(routeId, tripId);
             }
+
+            const dir = tripToDirection.get(tripId) || '0';
+            if (dir === '0') {
+                const best0 = routeToBestTripDir0.get(routeId);
+                if (!best0 || count > (tripStopCounts.get(best0) || 0)) {
+                    routeToBestTripDir0.set(routeId, tripId);
+                }
+            } else {
+                const best1 = routeToBestTripDir1.get(routeId);
+                if (!best1 || count > (tripStopCounts.get(best1) || 0)) {
+                    routeToBestTripDir1.set(routeId, tripId);
+                }
+            }
         }
 
-        const selectedTripIds = new Set(routeToBestTrip.values());
+        const selectedTripIds = new Set<string>();
+        routeToBestTrip.forEach(tid => selectedTripIds.add(tid));
+        routeToBestTripDir0.forEach(tid => selectedTripIds.add(tid));
+        routeToBestTripDir1.forEach(tid => selectedTripIds.add(tid));
+
         const selectedShapeIds = new Set();
-        selectedTripIds.forEach(tid => {
+        routeToBestTrip.forEach(tid => {
             const sid = tripToShapeId.get(tid);
             if (sid) selectedShapeIds.add(sid);
         });
@@ -214,14 +235,25 @@ async function processGTFS() {
             const tripId = routeToBestTrip.get(routeId);
             if (!tripId) continue;
 
-            const stimes = (selectedTripStops.get(tripId) || [])
-                .sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
-            
-            const stops = stimes.map(st => {
+            const tripId0 = routeToBestTripDir0.get(routeId);
+            const tripId1 = routeToBestTripDir1.get(routeId);
+
+            const stimes0 = tripId0 ? (selectedTripStops.get(tripId0) || [])
+                .sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence)) : [];
+            const stimes1 = tripId1 ? (selectedTripStops.get(tripId1) || [])
+                .sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence)) : [];
+
+            const stopsMapForRoute = new Map<string, any>();
+            stimes0.forEach(st => {
                 const s = allStopsMap.get(st.stop_id);
-                if (s) return { ...s, agency: route._app_agency };
-                return null;
-            }).filter(Boolean);
+                if (s) stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency });
+            });
+            stimes1.forEach(st => {
+                const s = allStopsMap.get(st.stop_id);
+                if (s) stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency });
+            });
+
+            const stops = Array.from(stopsMapForRoute.values());
 
             if (stops.length < 2) continue;
 
@@ -240,11 +272,17 @@ async function processGTFS() {
 
             fs.writeFileSync(path.join(LINES_OUT_DIR, `${routeId}.json`), JSON.stringify(lineData));
             
+            const overallBestStimes = (selectedTripStops.get(tripId) || [])
+                .sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
+            const bestStops = overallBestStimes.map(st => allStopsMap.get(st.stop_id)).filter(Boolean);
+            const fromName = bestStops.length > 0 ? bestStops[0].name : stops[0]!.name;
+            const toName = bestStops.length > 0 ? bestStops[bestStops.length-1].name : stops[stops.length-1]!.name;
+
             manifest.push({
                 id: routeId,
                 line: lineData.line,
-                from: stops[0]!.name,
-                to: stops[stops.length-1]!.name,
+                from: fromName,
+                to: toName,
                 agency: route._app_agency
             });
         }

@@ -213,8 +213,27 @@ app.get("/api/history", async (req, res) => {
     const [h, m] = timeStr.split(":").map(Number);
     const searchMinutes = h * 60 + m;
     const stopIds = (stopId as string).split(",").map(s => s.trim()).filter(Boolean);
-    const sOpts = stopIds.flatMap(s => [s, parseInt(s)]);
-    let query: any = { l: lineId, s: sOpts.length > 1 ? { $in: sOpts } : sOpts[0] };
+    
+    // Fallback: lookup stop names to find other platform/direction stop IDs automatically
+    let expandedStopIds = [...stopIds];
+    try {
+      const sOpts = stopIds.flatMap(s => [s, parseInt(s)].filter(val => !isNaN(Number(val))));
+      const inputStops = await db.collection("stops").find({ id: { $in: sOpts } }).toArray();
+      const names = Array.from(new Set(inputStops.map(s => s.name).filter(Boolean)));
+      if (names.length > 0) {
+        const matchingStops = await db.collection("stops").find({ name: { $in: names } }).toArray();
+        matchingStops.forEach(s => {
+          if (s.id && !expandedStopIds.includes(String(s.id))) {
+            expandedStopIds.push(String(s.id));
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("Stop expansion failed, falling back to query parameters", e);
+    }
+
+    const sOptsFinal = expandedStopIds.flatMap(s => [s, parseInt(s)].filter(val => !isNaN(Number(val))));
+    let query: any = { l: lineId, s: sOptsFinal.length > 1 ? { $in: sOptsFinal } : sOptsFinal[0] };
     const dateStr = date as string;
 
     let sort: any = { d: 1, sdm: 1 };
