@@ -54,12 +54,20 @@ export default function App() {
       const linesParam = params.get('lines');
       const stopParam = params.get('stop');
       const vehicleParam = params.get('vehicle');
+      const urlAgency = params.get('agency') || 'SL';
       
       if (linesParam) {
-        const lineIds = linesParam.split(',');
+        const lineNamesOrIds = linesParam.split(',');
         const loadedRoutes: SLLineRoute[] = [];
-        for (const id of lineIds) {
-          const r = await slService.getLineRoute(id);
+        for (const item of lineNamesOrIds) {
+          let targetRouteId = item;
+          // Look up in manifest to map line name (e.g. "1") to route ID (e.g. "9011001000100000")
+          const matched = m.find((x: any) => x.line === item && x.agency === urlAgency) || 
+                          m.find((x: any) => x.line === item);
+          if (matched) {
+            targetRouteId = matched.id;
+          }
+          const r = await slService.getLineRoute(targetRouteId);
           if (r) loadedRoutes.push(r);
         }
         if (loadedRoutes.length > 0) {
@@ -87,6 +95,16 @@ export default function App() {
     })();
   }, []);
 
+  // Resolve short vehicleNumber/ID from URL to full ID when vehicles populate
+  useEffect(() => {
+    if (selectedVehicleId && vehicles.length > 0) {
+      const matched = vehicles.find(v => v.vehicleNumber === selectedVehicleId || v.id === selectedVehicleId);
+      if (matched && matched.id !== selectedVehicleId) {
+        setSelectedVehicleId(matched.id);
+      }
+    }
+  }, [vehicles, selectedVehicleId]);
+
   // Sync state changes to browser URL query parameters
   useEffect(() => {
     if (loading) return;
@@ -97,7 +115,7 @@ export default function App() {
     
     if (view === 'live') {
       if (selectedRoutes.length > 0) {
-        params.set('lines', selectedRoutes.map(r => r.id).join(','));
+        params.set('lines', selectedRoutes.map(r => r.line || r.id).join(','));
       } else {
         params.delete('lines');
       }
@@ -109,7 +127,9 @@ export default function App() {
       }
       
       if (selectedVehicleId) {
-        params.set('vehicle', selectedVehicleId);
+        const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+        const displayVehicleId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
+        params.set('vehicle', displayVehicleId);
       } else {
         params.delete('vehicle');
       }
@@ -123,7 +143,7 @@ export default function App() {
     
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [view, agency, selectedRoutes, activeStop, selectedVehicleId, loading]);
+  }, [view, agency, selectedRoutes, activeStop, selectedVehicleId, vehicles, loading]);
 
   useEffect(() => {
     if (loading || view !== 'live') return;

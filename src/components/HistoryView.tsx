@@ -128,10 +128,21 @@ export default function HistoryView() {
       const queryParams = new URLSearchParams(window.location.search);
       const urlLineId = queryParams.get('hLine');
       const urlStopId = queryParams.get('hStop');
+      const urlAgency = queryParams.get('agency') || 'SL';
       
       if (urlLineId) {
         await slService.initialize();
-        const r = await slService.getLineRoute(urlLineId);
+        const m = await slService.getManifest();
+        
+        // Find if urlLineId is a short line name in our manifest (e.g. "1") or is already a route ID
+        let targetRouteId = urlLineId;
+        const matchedManifest = m.find((x: any) => x.line === urlLineId && x.agency === urlAgency) || 
+                                m.find((x: any) => x.line === urlLineId);
+        if (matchedManifest) {
+          targetRouteId = matchedManifest.id;
+        }
+
+        const r = await slService.getLineRoute(targetRouteId);
         if (r) {
           const lineResult: SearchResult = {
             type: 'line',
@@ -157,6 +168,9 @@ export default function HistoryView() {
             }));
             
             const matchedStop = uniqueStops.find(st => {
+              if (st.title.toLowerCase() === urlStopId.toLowerCase()) {
+                return true;
+              }
               const parts = st.id.split(',');
               const searchParts = urlStopId.split(',');
               return parts.some(p => searchParts.includes(p)) || searchParts.some(sp => parts.includes(sp));
@@ -190,13 +204,14 @@ export default function HistoryView() {
     params.set('hTime', time);
     
     if (selectedLine) {
-      params.set('hLine', selectedLine.id);
+      const lineShortName = selectedLine.title.replace(/^Linje\s+/i, '').trim();
+      params.set('hLine', lineShortName);
     } else {
       params.delete('hLine');
     }
     
     if (selectedStop) {
-      params.set('hStop', selectedStop.id);
+      params.set('hStop', selectedStop.title);
     } else {
       params.delete('hStop');
     }
