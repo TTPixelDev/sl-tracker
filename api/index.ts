@@ -13,9 +13,9 @@ function handleDbError(err: any) {
   if (!err) return;
   const errMsg = String(err.message || err || "");
   if (
-    errMsg.toLowerCase().includes("closed") || 
-    errMsg.toLowerCase().includes("topology") || 
-    err.name === "MongoTopologyClosedError" || 
+    errMsg.toLowerCase().includes("closed") ||
+    errMsg.toLowerCase().includes("topology") ||
+    err.name === "MongoTopologyClosedError" ||
     err.name === "MongoNetworkError"
   ) {
     console.warn("Database connection issue detected (such as closed topology). Resetting connection cache so next operation triggers a fresh reconnect:", errMsg);
@@ -26,8 +26,8 @@ function handleDbError(err: any) {
 function resetConnection() {
   if (mongoClient) {
     try {
-      mongoClient.close().catch(() => {});
-    } catch (e) {}
+      mongoClient.close().catch(() => { });
+    } catch (e) { }
   }
   mongoClient = null;
   clientPromise = null;
@@ -35,7 +35,7 @@ function resetConnection() {
 
 async function ensureIndexes(db: any) {
   if (indexesPromise) return;
-  
+
   indexesPromise = Promise.all([
     db.collection("stop_events").createIndex({ d: 1, l: 1, s: 1, sdm: 1 }).catch(console.error),
     db.collection("stop_events").createIndex({ t: 1, ts: -1 }).catch(console.error),
@@ -141,7 +141,7 @@ app.get("/api/trip-events", async (req, res) => {
     const { tripId } = req.query;
     if (!tripId || typeof tripId !== "string") return res.status(400).json({ error: "Missing tripId" });
     const db = await getDb("sl-times");
-    
+
     // Fetch the most recent event to determine the date of the latest run
     const latestEvent = await db.collection("stop_events").findOne({ t: tripId }, { sort: { ts: -1 } });
     if (!latestEvent) return res.status(200).json([]);
@@ -153,7 +153,7 @@ app.get("/api/trip-events", async (req, res) => {
 
     // Fetch all events for that specific trip run (same date as the recent event)
     const events = await db.collection("stop_events").find({ t: tripId, d: latestEvent.d }).toArray();
-    
+
     res.status(200).json(events.map(e => ({
       stopId: e.s,
       stopped: e.st,
@@ -175,18 +175,18 @@ app.get("/api/trip-history", async (req, res) => {
     const db = await getDb("sl-times");
     const trip = await db.collection("vehicle_trails").findOne({ tripId }, { projection: { trail: 1, _id: 0 } });
     if (!trip || !trip.trail) return res.status(200).json({ path: [] });
-    
+
     // Filter out old points from previous days
     const allPoints = (trip.trail as any[]).sort((a: any, b: any) => a.ts - b.ts);
     let currentRunStartIndex = 0;
     for (let i = 1; i < allPoints.length; i++) {
-        // If there's a gap of more than 1.5 hours between points, consider it a new run
-        if (allPoints[i].ts - allPoints[i-1].ts > 1.5 * 60 * 60 * 1000) {
-            currentRunStartIndex = i;
-        }
+      // If there's a gap of more than 1.5 hours between points, consider it a new run
+      if (allPoints[i].ts - allPoints[i - 1].ts > 1.5 * 60 * 60 * 1000) {
+        currentRunStartIndex = i;
+      }
     }
     const path = allPoints.slice(currentRunStartIndex).map(p => ({ lat: p.lat, lng: p.lng, ts: p.ts, delay: p.delay }));
-      
+
     res.status(200).json({ path });
   } catch (e: any) {
     handleDbError(e);
@@ -200,6 +200,7 @@ app.get("/api/status", async (req, res) => {
     const status = await db.collection("status").findOne({ _id: "ingest_status" as any });
     if (!status) return res.status(200).json({ online: false, text: "Ingen status", lastUpdate: null });
     const isOnline = (Date.now() - (status.lastUpdate ? new Date(status.lastUpdate).getTime() : 0)) < 180000;
+    res.setHeader("Cache-Control", "public, max-age=15, s-maxage=30, stale-while-revalidate=10");
     res.status(200).json({
       online: isOnline,
       text: status.text || "Väntar...",
@@ -220,6 +221,7 @@ app.get("/api/data-range", async (req, res) => {
     if (!earliest.length || !earliest[0].d) return res.status(200).json({ days: 0 });
     const date = new Date(earliest[0].d);
     const diff = Math.max(0, new Date().getTime() - date.getTime());
+    res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600");
     res.status(200).json({ days: Math.ceil(diff / (1000 * 3600 * 24)) });
   } catch (e: any) {
     console.error("Data range error:", e);
@@ -238,7 +240,7 @@ app.get("/api/search", async (req, res) => {
       return res.status(200).json(stops.map(s => ({ type: "stop", id: s.id, title: s.name, subtitle: "Hållplats" })));
     } else {
       const routes = await db.collection("routes").find({
-        $or: [ { shortName: { $regex: q, $options: "i" } }, { longName: { $regex: q, $options: "i" } } ]
+        $or: [{ shortName: { $regex: q, $options: "i" } }, { longName: { $regex: q, $options: "i" } }]
       }).limit(15).toArray();
       return res.status(200).json(routes.map(r => ({ type: "line", id: r.id, title: `Linje ${r.shortName}`, subtitle: r.longName })));
     }
@@ -257,7 +259,8 @@ app.get("/api/line-stops", async (req, res) => {
     const sIds = new Set<string>();
     trips.forEach(t => t.stops?.forEach((s: any) => { if (s.id) sIds.add(String(s.id)); }));
     const stops = await db.collection("stops").find({ id: { $in: Array.from(sIds) } }).toArray();
-    return res.status(200).json({ stops: stops.sort((a,b) => a.name.localeCompare(b.name)) });
+    res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600");
+    return res.status(200).json({ stops: stops.sort((a, b) => a.name.localeCompare(b.name)) });
   } catch (e: any) {
     handleDbError(e);
     res.status(200).json({ stops: [] });
@@ -290,7 +293,7 @@ app.get("/api/history", async (req, res) => {
     const [h, m] = timeStr.split(":").map(Number);
     const searchMinutes = h * 60 + m;
     const stopIds = (stopId as string).split(",").map(s => s.trim()).filter(Boolean);
-    
+
     // Fallback: lookup stop names to find other platform/direction stop IDs automatically
     let expandedStopIds = [...stopIds];
     try {
@@ -316,15 +319,15 @@ app.get("/api/history", async (req, res) => {
     let sort: any = { d: 1, sdm: 1 };
     const refDate = req.query.refDate as string;
     const refSdm = parseInt(req.query.refSdm as string);
-    
+
     const startMin = (!isNaN(refSdm) && refDate) ? refSdm : searchMinutes;
     const startDate = (!isNaN(refSdm) && refDate) ? refDate : dateStr;
 
     if (direction === "next") {
-      query.$or = [ { d: startDate, sdm: { $gte: startMin } }, { d: { $gt: startDate } } ];
+      query.$or = [{ d: startDate, sdm: { $gte: startMin } }, { d: { $gt: startDate } }];
       sort = { d: 1, sdm: 1, _id: 1 };
     } else {
-      query.$or = [ { d: startDate, sdm: { $lt: startMin } }, { d: { $lt: startDate } } ];
+      query.$or = [{ d: startDate, sdm: { $lt: startMin } }, { d: { $lt: startDate } }];
       sort = { d: -1, sdm: -1, _id: -1 };
     }
 
@@ -345,14 +348,14 @@ app.get("/api/history", async (req, res) => {
 
     for (const ev of events) {
       if (!ev.destinationName) {
-         const tr = await db.collection("trips").findOne({ _id: ev.tripId }, { projection: { destinationName: 1 } });
-         if (tr?.destinationName) ev.destinationName = tr.destinationName;
+        const tr = await db.collection("trips").findOne({ _id: ev.tripId }, { projection: { destinationName: 1 } });
+        if (tr?.destinationName) ev.destinationName = tr.destinationName;
       }
     }
 
     if (direction === "prev") events.reverse();
     return res.status(200).json(events);
-  } catch(e: any) {
+  } catch (e: any) {
     handleDbError(e);
     res.status(200).json([]);
   }

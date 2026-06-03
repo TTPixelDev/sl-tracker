@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "sl-tracker",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -10,9 +10,9 @@
     "clean": "rm -rf dist",
     "start": "node dist-server/server.cjs",
     "lint": "tsc --noEmit",
-    "download-gtfs": "tsx scripts/download-gtfs.ts",
-    "process-gtfs": "tsx scripts/process-gtfs.ts",
-    "update-gtfs": "npm run download-gtfs && npm run process-gtfs",
+    "download": "tsx scripts/download-gtfs.ts",
+    "process": "tsx scripts/process-gtfs.ts",
+    "update": "npm run download && npm run process",
     "ingest": "tsx scripts/ingest-rt.ts"
   },
   "dependencies": {
