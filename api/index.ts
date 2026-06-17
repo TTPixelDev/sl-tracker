@@ -5,6 +5,59 @@ import { MongoClient } from "mongodb";
 const app = express();
 app.use(express.json());
 
+app.get("/", async (req, res, next) => {
+  try {
+    const { vehicle, lines, hLine, hStop } = req.query;
+
+    if (!vehicle && !lines && !hLine && !hStop) {
+      return next(); // Pass to Next (Vite or Static)
+    }
+
+    // Skip interception if we are already fetching internally to avoid loops
+    if (req.headers["x-internal-fetch"]) {
+      return next();
+    }
+
+    let dynamicTitle = "SL Tracker";
+    if (hLine && hStop) {
+      dynamicTitle = `SL Tracker - Linje ${hLine} ${hStop}`;
+    } else if (hLine) {
+      dynamicTitle = `SL Tracker - Linje ${hLine}`;
+    } else if (lines && vehicle) {
+      dynamicTitle = `SL Tracker - Linje ${lines} Vagn ${vehicle}`;
+    } else if (lines) {
+      dynamicTitle = `SL Tracker - Linje ${lines}`;
+    } else if (vehicle) {
+      dynamicTitle = `SL Tracker - Vagn ${vehicle}`;
+    }
+
+    // Fetch the underlying static HTML page from the Vercel edge/deployment
+    const host = req.headers.host;
+    const protocol = host?.includes("localhost") ? "http" : "https";
+
+    // Use x-internal-fetch header to avoid intercepting our own fetch locally
+    const htmlRes = await fetch(`${protocol}://${host}/`, {
+      headers: {
+        "x-internal-fetch": "true"
+      }
+    });
+
+    if (!htmlRes.ok) {
+      return next();
+    }
+    let html = await htmlRes.text();
+
+    const titleTag = `<title>${dynamicTitle}</title>\n    <meta property="og:title" content="${dynamicTitle}" />\n    <meta name="twitter:title" content="${dynamicTitle}" />`;
+    html = html.replace(/<title>.*?<\/title>/i, titleTag);
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(html);
+  } catch (err) {
+    console.error("Failed to serve dynamic HTML", err);
+    next();
+  }
+});
+
 let mongoClient: MongoClient | null = null;
 let clientPromise: Promise<MongoClient> | null = null;
 let indexesPromise: Promise<any> | null = null;

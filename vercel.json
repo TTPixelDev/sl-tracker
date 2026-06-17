@@ -13,6 +13,36 @@
       "destination": "/api/index.ts"
     },
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "query",
+          "key": "vehicle"
+        }
+      ],
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "query",
+          "key": "lines"
+        }
+      ],
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "query",
+          "key": "hLine"
+        }
+      ],
+      "destination": "/api/index.ts"
+    },
+    {
       "source": "/(.*)",
       "destination": "/"
     }
