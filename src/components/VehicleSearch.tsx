@@ -8,9 +8,10 @@ interface VehicleSearchProps {
   onVehicleFound: (vehicle: SLVehicle, routeId: string) => void;
   currentAgency: 'SL' | 'WAAB';
   onAgencyChange: (agency: 'SL' | 'WAAB') => void;
+  lastUpdated?: Date | null;
 }
 
-const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAgency, onAgencyChange }) => {
+const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAgency, onAgencyChange, lastUpdated }) => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +126,14 @@ const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAg
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
         </button>
       </form>
+
+      {lastUpdated && (
+          <div className="text-right sm:text-right text-center -mt-1.5 px-1">
+              <span className="text-[9px] text-slate-500/80 font-medium normal-case tracking-normal drop-shadow-md" title="Senaste GTFS uppdatering">
+                  Statisk data uppdaterad: {lastUpdated.toISOString().split('T')[0]}
+              </span>
+          </div>
+      )}
 
       {showSuggestions && suggestions.length > 0 && (
         <div className="absolute bottom-full mb-3 left-0 right-0 bg-slate-800 border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2">

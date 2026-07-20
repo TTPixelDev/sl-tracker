@@ -337,6 +337,21 @@ class SLService {
       return await res.json();
   }
 
+  async getLastUpdated(): Promise<Date | null> {
+    try {
+      const res = await fetch('/data/meta.json');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.lastUpdated) {
+          return new Date(data.lastUpdated);
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   private async getRTRoot() {
     if (this.rtRoot) return this.rtRoot;
     this.rtRoot = await protobuf.parse(`

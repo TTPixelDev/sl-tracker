@@ -372,7 +372,7 @@ async function processGTFS() {
 
         fs.writeFileSync(path.join(OUT_DIR, 'trip-to-route.json'), JSON.stringify(tripToRouteIdJson));
         fs.writeFileSync(path.join(OUT_DIR, 'route-directions.json'), JSON.stringify(routeDirections));
-
+        fs.writeFileSync(path.join(OUT_DIR, 'meta.json'), JSON.stringify({ lastUpdated: new Date().toISOString() }));
 
         console.log(`✅ Bearbetning klar! ${manifest.length} linjer sparade.`);
     } catch (error) {
