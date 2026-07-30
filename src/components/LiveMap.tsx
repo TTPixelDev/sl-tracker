@@ -4,7 +4,6 @@ import L from 'leaflet';
 import { slService } from '../services/slService';
 import { SLVehicle, SLLineRoute, SearchResult, SLStop, HistoryPoint } from '../types';
 import { Ship, TrainFront, TramFront, Train, Bus, Clock } from 'lucide-react';
-import VehiclePopup from './VehiclePopup';
 import { getLineColor, getTransportIcon } from '../utils/mapUtils';
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -33,75 +32,49 @@ const WAAB_DEFAULT_VIEW: MapView = {
 };
 
 const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSelect, onDeselect }) => {
-  const markerRef = useRef<L.Marker>(null);
-  const isUnmounting = useRef(false);
-
-  useLayoutEffect(() => {
-    return () => {
-      isUnmounting.current = true;
-    };
-  }, []);
+  const isNoBearing = ['7', '12', '21', '25', '26', '27', '28', '29', '30', '31'].includes(lineShortName);
   
   const icon = useMemo(() => {
     const color = getLineColor(lineShortName, vehicle.agency);
-    const isNoBearing = ['7', '12', '21', '25', '26', '27', '28', '29', '30', '31'].includes(lineShortName);
     
     let markerHtml = '';
     if (isNoBearing) {
       markerHtml = '<div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; position: relative;">' +
-        '<div style="width: 20px; height: 20px; background: ' + color + '; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.5);"></div>' +
-        '<div style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: ' + color + '; color: white; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2);">' +
+        '<div style="width: ' + (isSelected ? '28px' : '20px') + '; height: ' + (isSelected ? '28px' : '20px') + '; background: ' + color + '; border: ' + (isSelected ? '4px' : '3px') + ' solid white; border-radius: 50%; box-shadow: 0 ' + (isSelected ? '4px 12px rgba(0,0,0,0.8)' : '2px 8px rgba(0,0,0,0.5)') + '; transition: all 0.2s ease;"></div>' +
+        '<div style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: ' + color + '; color: white; padding: 1px 6px; border-radius: 4px; font-size: ' + (isSelected ? '12px' : '10px') + '; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); z-index: 10;">' +
         lineShortName +
         '</div>' +
         '</div>';
     } else {
-      markerHtml = '<div style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; position: relative;">' +
+      markerHtml = '<div style="width: ' + (isSelected ? '44px' : '34px') + '; height: ' + (isSelected ? '44px' : '34px') + '; display: flex; align-items: center; justify-content: center; position: relative; transition: all 0.2s ease;">' +
         '<div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transform: rotate(' + vehicle.bearing + 'deg);">' +
-        '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">' +
-        '<path d="M12 2L4 21L12 17L20 21L12 2Z" fill="' + color + '" stroke="white" stroke-width="2" stroke-linejoin="round"/>' +
+        '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; filter: drop-shadow(0 ' + (isSelected ? '4px 8px rgba(0,0,0,0.6)' : '2px 4px rgba(0,0,0,0.4)') + ');">' +
+        '<path d="M12 2L4 21L12 17L20 21L12 2Z" fill="' + color + '" stroke="white" stroke-width="' + (isSelected ? '3' : '2') + '" stroke-linejoin="round"/>' +
         '</svg>' +
         '</div>' +
-        '<div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: ' + color + '; color: white; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">' +
+        '<div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: ' + color + '; color: white; padding: 1px 5px; border-radius: 3px; font-size: ' + (isSelected ? '11px' : '9px') + '; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 10;">' +
         lineShortName +
         '</div>' +
         '</div>';
     }
 
     return L.divIcon({
-        className: 'custom-vehicle-icon',
+        className: 'custom-vehicle-icon ' + (isSelected ? 'z-[1000]' : ''),
         html: markerHtml,
-        iconSize: isNoBearing ? [40, 40] : [34, 34],
-        iconAnchor: isNoBearing ? [20, 20] : [17, 17]
+        iconSize: isNoBearing ? (isSelected ? [48, 48] : [40, 40]) : (isSelected ? [44, 44] : [34, 34]),
+        iconAnchor: isNoBearing ? (isSelected ? [24, 24] : [20, 20]) : (isSelected ? [22, 22] : [17, 17])
       });
-  }, [vehicle.bearing, lineShortName, vehicle.agency]); 
-
-  const isSelectedRef = useRef(isSelected);
-  isSelectedRef.current = isSelected;
-
-  useEffect(() => {
-    if (markerRef.current) {
-        if (isSelected) {
-            if (!markerRef.current.isPopupOpen()) markerRef.current.openPopup();
-        } else {
-            if (markerRef.current.isPopupOpen()) markerRef.current.closePopup();
-        }
-    }
-  }, [isSelected, vehicle.lat, vehicle.lng]);
+  }, [vehicle.bearing, lineShortName, vehicle.agency, isSelected, isNoBearing]); 
 
   return (
     <Marker 
-      ref={markerRef} 
       position={[vehicle.lat, vehicle.lng]} 
       icon={icon} 
       eventHandlers={{ 
-        click: () => onSelect(vehicle.id), 
-        popupclose: () => { if (isSelectedRef.current && !isUnmounting.current) onDeselect(); }
+        click: () => isSelected ? onDeselect() : onSelect(vehicle.id)
       }}
-    >
-      <Popup className="custom-popup" autoPan={false} closeButton={true}>
-        <VehiclePopup vehicle={vehicle} lineShortName={lineShortName} />
-      </Popup>
-    </Marker>
+      zIndexOffset={isSelected ? 1000 : 0}
+    />
   );
 };
 

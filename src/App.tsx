@@ -7,6 +7,7 @@ import { getLineColor, getTransportIcon } from './utils/mapUtils';
 import SearchBar from './components/SearchBar';
 import VehicleSearch from './components/VehicleSearch';
 import HistoryView from './components/HistoryView';
+import LiveVehicleStatus from './components/LiveVehicleStatus';
 import L from 'leaflet';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -508,28 +509,38 @@ export default function App() {
             </div>
 
             <div className="absolute bottom-6 left-6 right-6 z-[1000] flex flex-col sm:flex-row justify-between items-end gap-4 pointer-events-none">
-                <div className="bg-slate-900/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-white/10 pointer-events-auto w-full sm:w-auto sm:min-w-[280px]">
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-3 flex items-center justify-between border-b border-white/5 pb-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /> Live Status
+                {selectedVehicleId ? (
+                    <LiveVehicleStatus
+                        vehicle={vehicles.find(v => v.id === selectedVehicleId)!}
+                        lineShortName={routeManifest.get(vehicles.find(v => v.id === selectedVehicleId)?.line || '')?.line || '?'}
+                        tripEvents={tripEvents}
+                        onClose={() => setSelectedVehicleId(null)}
+                        selectedRoutes={selectedRoutes}
+                    />
+                ) : (
+                    <div className="bg-slate-900/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-white/10 pointer-events-auto w-full sm:w-auto sm:min-w-[280px]">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-3 flex items-center justify-between border-b border-white/5 pb-2">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /> Live Status
+                            </div>
+                        </div>
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-4 px-1">
+                                <span className="text-xs text-slate-300 font-bold">{selectedRoutes.length > 0 ? `Fordon på valda linjer` : 'Fordon i trafik'}</span>
+                                <span className="text-xs text-white font-bold bg-slate-800/50 px-2.5 py-1.5 rounded-xl border border-white/5 shadow-inner">
+                                    {selectedRoutes.length > 0 ? vehicles.filter(v => selectedRoutes.some(r => r.id === v.line)).length : vehicles.length}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-8 pt-3 border-t border-white/5 px-1">
+                                <span className="text-xs text-slate-300 font-bold">Visa all trafik</span>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="sr-only peer" />
+                                    <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 border border-white/5 shadow-inner"></div>
+                                </label>
+                            </div>
                         </div>
                     </div>
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-4 px-1">
-                            <span className="text-xs text-slate-300 font-bold">{selectedRoutes.length > 0 ? `Fordon på valda linjer` : 'Fordon i trafik'}</span>
-                            <span className="text-xs text-white font-bold bg-slate-800/50 px-2.5 py-1.5 rounded-xl border border-white/5 shadow-inner">
-                                {selectedRoutes.length > 0 ? vehicles.filter(v => selectedRoutes.some(r => r.id === v.line)).length : vehicles.length}
-                            </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-8 pt-3 border-t border-white/5 px-1">
-                            <span className="text-xs text-slate-300 font-bold">Visa all trafik</span>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="sr-only peer" />
-                                <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 border border-white/5 shadow-inner"></div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
+                )}
                 
                 <div className="pointer-events-auto w-full sm:w-auto">
                     <VehicleSearch 
