@@ -23,8 +23,8 @@ const formatSwedishDate = (dateStr: string) => {
   }
 };
 
-const formatGtfsTime = (timeStr: string | null) => {
-  if (!timeStr) return '--:--';
+const formatGtfsTime = (timeStr: any) => {
+  if (!timeStr || typeof timeStr !== 'string') return '--:--';
   const parts = timeStr.split(':');
   let h = parseInt(parts[0]);
   const m = parts[1] || '00';
@@ -32,8 +32,8 @@ const formatGtfsTime = (timeStr: string | null) => {
   return `${h.toString().padStart(2, '0')}:${m}`;
 };
 
-const formatActualTime = (timeStr: string | null) => {
-  if (!timeStr) return '--:--:--';
+const formatActualTime = (timeStr: any) => {
+  if (!timeStr || typeof timeStr !== 'string') return '--:--:--';
   const parts = timeStr.split(':');
   let h = parseInt(parts[0]);
   const m = parts[1] || '00';
@@ -42,9 +42,10 @@ const formatActualTime = (timeStr: string | null) => {
   return `${h.toString().padStart(2, '0')}:${m}:${s}`;
 };
 
-const getDiff = (scheduled: string, actual: string | null) => {
-  if (!actual || !scheduled) return null;
+const getDiff = (scheduled: any, actual: any) => {
+  if (!actual || !scheduled || typeof actual !== 'string' || typeof scheduled !== 'string') return null;
   const toSec = (t: string) => {
+    if (typeof t !== 'string') return 0;
     const parts = t.split(':').map(Number);
     const h = parts[0] >= 24 ? parts[0] - 24 : parts[0];
     const m = parts[1] || 0;
@@ -67,9 +68,10 @@ const getDiff = (scheduled: string, actual: string | null) => {
   return { text: `${sign}${mins}m ${secs}s`, color: diffSecs > 0 ? 'text-red-500' : 'text-blue-500' };
 };
 
-const getDuration = (arrival: string | null, departure: string | null) => {
-  if (!arrival || !departure) return null;
+const getDuration = (arrival: any, departure: any) => {
+  if (!arrival || !departure || typeof arrival !== 'string' || typeof departure !== 'string') return null;
   const toSec = (t: string) => {
+    if (typeof t !== 'string') return 0;
     const parts = t.split(':').map(Number);
     const h = parts[0] >= 24 ? parts[0] - 24 : parts[0];
     const m = parts[1] || 0;
@@ -498,6 +500,25 @@ export default function HistoryView() {
 }
 
 const EventCard: React.FC<{ event: StopEvent, lineName: string }> = ({ event, lineName }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [tripEvents, setTripEvents] = useState<any[]>([]);
+  const [loadingTrip, setLoadingTrip] = useState(false);
+
+  useEffect(() => {
+    if (expanded && tripEvents.length === 0) {
+      setLoadingTrip(true);
+      slService.getTripEvents(event.tripId, event.date).then(async (events) => {
+        // Fetch stop names for each event
+        const eventsWithNames = await Promise.all(events.map(async (e) => {
+          const stopInfo = await slService.getStopInfo(e.stopId || e.s);
+          return { ...e, stopName: stopInfo?.name || (e.stopId || e.s) };
+        }));
+        setTripEvents(eventsWithNames);
+        setLoadingTrip(false);
+      });
+    }
+  }, [expanded, event.tripId, event.date, tripEvents.length]);
+
   const Icon = getTransportIcon(lineName);
   const colorHex = getLineColor(lineName, event.agency);
   const lineNumber = lineName.replace('Linje ', '').trim();
@@ -518,51 +539,120 @@ const EventCard: React.FC<{ event: StopEvent, lineName: string }> = ({ event, li
   })();
   
   return (
-    <motion.div layout initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-1.5 h-full" style={{ backgroundColor: colorHex }} />
-      <div className="flex flex-col md:flex-row gap-4 items-center pl-2">
-        <div className="flex items-center gap-4 w-full md:w-1/3">
-          <div className="w-14 h-14 rounded-2xl flex flex-col items-center justify-center text-white shrink-0 shadow-lg" style={{ backgroundColor: colorHex }}>
-            <Icon className="w-5 h-5 mb-0.5" />
-            <span className={cn("font-black leading-none", lineNumber.length > 3 ? "text-[10px]" : "text-sm")}>{lineNumber}</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Destination</div>
-            <h3 className="font-bold text-slate-800 text-lg leading-tight truncate pr-2" title={event.destinationName}>
-              {event.destinationName || 'Destination okänd'}
-            </h3>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3 w-full md:w-[80%] overflow-x-auto">
-          <TimeInfo label="Tidtabell" time={formatGtfsTime(event.scheduledDeparture)} />
-          <TimeInfo label="Ankomst" time={formatActualTime(event.actualArrival)} highlight />
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Uppehåll</span>
-            <span className="text-base font-mono font-bold truncate text-slate-500">{stopDuration ? stopDuration.text : '--'}</span>
-          </div>
-          <TimeInfo label="Avgång" time={formatActualTime(event.actualDeparture)} highlight status={isDelayed ? 'warning' : (diff && diff.text === 'I tid' ? 'success' : 'normal')} />
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Avvikelse</span>
-            <span className={cn("text-base font-mono font-bold truncate", diff?.color || "text-slate-400")}>{diff ? diff.text : '--'}</span>
-          </div>
-          <div className="flex flex-col justify-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</span>
-            <div className={cn("flex items-center gap-1.5 font-bold text-[10px] px-2 py-1 rounded-full w-fit shrink-0", isStopped ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>
-              {isStopped ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-              <span className="truncate">{isStopped ? 'Stannade' : 'Passerade'}</span>
+    <motion.div layout initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden flex flex-col">
+      <button type="button" onClick={() => setExpanded(!expanded)} className="p-4 sm:p-5 text-left flex flex-col w-full relative outline-none focus-visible:bg-slate-50 transition-colors">
+        <div className="absolute top-0 left-0 w-1.5 h-full" style={{ backgroundColor: colorHex }} />
+        <div className="flex flex-col md:flex-row gap-3 md:gap-4 items-center pl-2 w-full">
+          <div className="flex items-center gap-3 w-full md:w-[200px] lg:w-[220px] shrink-0">
+            <div className="w-12 h-12 rounded-2xl flex flex-col items-center justify-center text-white shrink-0 shadow-md" style={{ backgroundColor: colorHex }}>
+              <Icon className="w-4 h-4 mb-0.5" />
+              <span className={cn("font-black leading-none", lineNumber.length > 3 ? "text-[10px]" : "text-xs")}>{lineNumber}</span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Destination</div>
+              <h3 className="font-bold text-slate-800 text-base leading-tight truncate pr-1" title={event.destinationName}>
+                {event.destinationName || 'Destination okänd'}
+              </h3>
             </div>
           </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 lg:gap-3 flex-1 w-full items-center min-w-0">
+            <TimeInfo label="Tidtabell" time={formatGtfsTime(event.scheduledDeparture)} />
+            <TimeInfo label="Ankomst" time={formatActualTime(event.actualArrival)} highlight />
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 truncate">Uppehåll</span>
+              <span className="text-xs sm:text-sm lg:text-base font-mono font-bold truncate text-slate-500">{stopDuration ? stopDuration.text : '--'}</span>
+            </div>
+            <TimeInfo label="Avgång" time={formatActualTime(event.actualDeparture)} highlight status={isDelayed ? 'warning' : (diff && diff.text === 'I tid' ? 'success' : 'normal')} />
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 truncate">Avvikelse</span>
+              <span className={cn("text-xs sm:text-sm lg:text-base font-mono font-bold truncate", diff?.color || "text-slate-400")}>{diff ? diff.text : '--'}</span>
+            </div>
+            <div className="flex flex-col justify-center min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 truncate">Status</span>
+              <div className={cn("flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full w-fit shrink-0", isStopped ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>
+                {isStopped ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
+                <span className="truncate">{isStopped ? 'Stannade' : 'Passerade'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 pl-1 text-slate-400 hidden sm:flex items-center justify-center">
+            {expanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+          </div>
         </div>
-      </div>
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-slate-100 bg-slate-50/50">
+            <div className="p-5 pl-10 md:pl-[6.5rem]">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Avgångens historik (alla hållplatser)</h4>
+              {loadingTrip ? (
+                <div className="flex justify-center items-center py-4"><Activity className="w-5 h-5 text-slate-400 animate-spin" /></div>
+              ) : tripEvents.length === 0 ? (
+                <p className="text-sm text-slate-500">Ingen historik hittades för denna avgång.</p>
+              ) : (
+                <div className="relative pl-4 space-y-4 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
+                  {tripEvents.map((te, i) => {
+                    const isCurrent = te.stopId === event.stopId || te.s === event.stopId;
+                    const stopDiff = getDiff(te.scheduledDeparture || te.sd, te.actualDeparture || te.ad);
+                    const isTeStopped = (() => {
+                      if (te.stopped !== undefined && te.stopped !== null) return Boolean(te.stopped);
+                      if (te.st !== undefined && te.st !== null) return Boolean(te.st);
+                      const arr = te.actualArrival || te.aa;
+                      const dep = te.actualDeparture || te.ad;
+                      if (!arr || !dep || typeof arr !== 'string' || typeof dep !== 'string') return false;
+                      const toSec = (t: string) => {
+                        const parts = t.split(':').map(Number);
+                        return (parts[0] >= 24 ? parts[0] - 24 : parts[0]) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+                      };
+                      let duration = toSec(dep) - toSec(arr);
+                      if (duration < -43200) duration += 86400;
+                      return duration >= 25;
+                    })();
+
+                    return (
+                      <div key={i} className={cn("relative flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4", isCurrent ? "opacity-100" : "opacity-75 hover:opacity-100 transition-opacity")}>
+                        <div className={cn("absolute -left-[21px] top-1.5 w-[11px] h-[11px] rounded-full border-2", isCurrent ? "bg-blue-500 border-white ring-2 ring-blue-200" : "bg-white border-slate-300")} />
+                        <div className="w-16 shrink-0 text-sm font-mono font-bold text-slate-500 mt-0.5 sm:mt-0">
+                          {formatActualTime(te.actualDeparture || te.ad)}
+                        </div>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {isTeStopped ? (
+                            <span title="Stannade" className="shrink-0 flex items-center">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            </span>
+                          ) : (
+                            <span title="Passerade" className="shrink-0 flex items-center">
+                              <XCircle className="w-4 h-4 text-amber-500" />
+                            </span>
+                          )}
+                          <div className={cn("font-semibold text-sm truncate", isCurrent ? "text-blue-600 font-bold" : "text-slate-700")}>
+                            {te.stopName || `Hållplats ${te.stopId || te.s}`}
+                          </div>
+                        </div>
+                        {stopDiff && (
+                          <div className={cn("text-xs font-mono font-bold sm:w-20 sm:text-right shrink-0", stopDiff.color)}>
+                            {stopDiff.text}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
 
 function TimeInfo({ label, time, highlight, status }: { label: string, time: string, highlight?: boolean, status?: 'success' | 'warning' | 'normal' }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</span>
-      <span className={cn("text-base font-mono font-bold tracking-tight", highlight ? "text-slate-800" : "text-slate-400", status === 'warning' && "text-red-500", status === 'success' && "text-emerald-500")}>
+    <div className="flex flex-col min-w-0">
+      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 truncate">{label}</span>
+      <span className={cn("text-xs sm:text-sm lg:text-base font-mono font-bold tracking-tight truncate", highlight ? "text-slate-800" : "text-slate-400", status === 'warning' && "text-red-500", status === 'success' && "text-emerald-500")}>
         {time}
       </span>
     </div>

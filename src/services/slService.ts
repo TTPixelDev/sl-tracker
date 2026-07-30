@@ -331,8 +331,9 @@ class SLService {
       return data.path || [];
   }
 
-  async getTripEvents(tripId: string): Promise<any[]> {
-      const res = await fetch(`/api/trip-events?tripId=${tripId}&t=${Date.now()}`);
+  async getTripEvents(tripId: string, date?: string): Promise<any[]> {
+      const url = date ? `/api/trip-events?tripId=${tripId}&date=${date}&t=${Date.now()}` : `/api/trip-events?tripId=${tripId}&t=${Date.now()}`;
+      const res = await fetch(url);
       if (!res.ok) return [];
       return await res.json();
   }
