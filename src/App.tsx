@@ -253,17 +253,28 @@ export default function App() {
         route.stops.forEach(stop => {
             const ev = tripEvents?.find(e => String(e.stopId) === String(stop.id));
             if (ev) {
-                const formatTime = (s: number) => {
-                    let h = Math.floor(s / 3600);
-                    if (h >= 24) h -= 24;
-                    const m = Math.floor((s % 3600) / 60);
-                    const sec = s % 60;
-                    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+                const toSec = (t: string | number) => {
+                    if (typeof t === "number") return t;
+                    if (typeof t !== "string") return 0;
+                    const parts = t.split(":");
+                    return (Number(parts[0]) >= 24 ? Number(parts[0]) - 24 : Number(parts[0])) * 3600 + (Number(parts[1]) || 0) * 60 + (Number(parts[2]) || 0);
                 };
+                
+                const formatTimeString = (t: string | number) => {
+                    if (typeof t === "string") return t;
+                    let h = Math.floor(t / 3600);
+                    if (h >= 24) h -= 24;
+                    const m = Math.floor((t % 3600) / 60);
+                    const sec = t % 60;
+                    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+                };
+
                 let isStopped = !!ev.stopped;
                 let durationStr = "";
                 if (ev.actualDeparture && ev.actualArrival) {
-                    let durationSec = ev.actualDeparture - ev.actualArrival;
+                    const depSec = toSec(ev.actualDeparture);
+                    const arrSec = toSec(ev.actualArrival);
+                    let durationSec = depSec - arrSec;
                     if (durationSec < -43200) durationSec += 86400;
                     if (durationSec >= 25) {
                         isStopped = true;
@@ -274,12 +285,14 @@ export default function App() {
                         durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
                     }
                 }
+
                 passages.set(stop.id, {
-                    time: ev.actualArrival ? formatTime(ev.actualArrival) : '',
+                    time: ev.actualArrival ? formatTimeString(ev.actualArrival) : "",
                     stopped: isStopped,
                     duration: durationStr,
-                    departureTime: ev.actualDeparture ? formatTime(ev.actualDeparture) : undefined
+                    departureTime: ev.actualDeparture ? formatTimeString(ev.actualDeparture) : undefined
                 });
+
                 return;
             }
 
