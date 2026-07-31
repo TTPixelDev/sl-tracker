@@ -19,7 +19,9 @@ interface LiveVehicleStatusProps {
 }
 
 const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShortName, tripEvents, onClose, selectedRoutes }) => {
-  const match = /([0-9]{3})([0-9]{4})$/.exec(vehicle.id);
+  if (!vehicle) return null;
+
+  const match = vehicle.id ? /([0-9]{3})([0-9]{4})$/.exec(vehicle.id) : null;
   const companyCode = match ? match[1] : null;
   const vesselCode = match ? match[2] : vehicle.id.slice(-4);
   

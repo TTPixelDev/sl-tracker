@@ -170,17 +170,31 @@ const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => 
 
 const MapController = ({ center, zoom, bounds }: { center: [number, number]; zoom: number; bounds?: L.LatLngBoundsExpression }) => {
   const map = useMap();
-  useEffect(() => { if (bounds) map.fitBounds(bounds, { padding: [50, 50] }); else map.setView(center, zoom); }, [center, zoom, bounds, map]);
+  useEffect(() => {
+    try {
+      if (bounds) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      } else if (center && typeof center[0] === 'number' && typeof center[1] === 'number') {
+        map.setView(center, zoom);
+      }
+    } catch (e) {}
+  }, [center, zoom, bounds, map]);
   return null;
 };
 
 const SelectedVehicleTracker = ({ selectedVehicleId, vehicles }: { selectedVehicleId: string | null, vehicles: SLVehicle[] }) => {
   const map = useMap();
   useEffect(() => {
-    if (selectedVehicleId) {
-      const v = vehicles.find((v: any) => v.id === selectedVehicleId);
-      if (v) {
-        map.panTo([v.lat, v.lng], { animate: true });
+    if (selectedVehicleId && Array.isArray(vehicles)) {
+      const v = vehicles.find((v: any) => v && v.id === selectedVehicleId);
+      if (v && typeof v.lat === 'number' && typeof v.lng === 'number' && !isNaN(v.lat) && !isNaN(v.lng)) {
+        try {
+          map.panTo([v.lat, v.lng], { animate: true });
+        } catch (e) {
+          try {
+            map.setView([v.lat, v.lng]);
+          } catch (err) {}
+        }
       }
     }
   }, [selectedVehicleId, vehicles, map]);

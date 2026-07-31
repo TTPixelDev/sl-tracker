@@ -180,6 +180,18 @@ export default function App() {
     window.history.replaceState({}, '', newUrl);
   }, [view, agency, selectedRoutes, activeStop, selectedVehicleId, vehicles, loading]);
 
+  const prevAgencyRef = useRef(agency);
+  useEffect(() => {
+    if (prevAgencyRef.current !== agency) {
+      prevAgencyRef.current = agency;
+      setSelectedVehicleId(null);
+      setSelectedRoutes([]);
+      setActiveStop(null);
+      setHistory([]);
+      setTripEvents([]);
+    }
+  }, [agency]);
+
   useEffect(() => {
     if (loading || view !== 'live') return;
     const fetchData = async () => {
@@ -509,7 +521,7 @@ export default function App() {
             </div>
 
             <div className="absolute bottom-6 left-6 right-6 z-[1000] flex flex-col sm:flex-row justify-between items-end gap-4 pointer-events-none">
-                {selectedVehicleId ? (
+                {selectedVehicleId && vehicles.some(v => v.id === selectedVehicleId) ? (
                     <LiveVehicleStatus
                         vehicle={vehicles.find(v => v.id === selectedVehicleId)!}
                         lineShortName={routeManifest.get(vehicles.find(v => v.id === selectedVehicleId)?.line || '')?.line || '?'}
