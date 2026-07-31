@@ -71,11 +71,101 @@ const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSe
       position={[vehicle.lat, vehicle.lng]} 
       icon={icon} 
       eventHandlers={{ 
-        click: () => isSelected ? onDeselect() : onSelect(vehicle.id)
+        click: (e: any) => {
+          if (e.originalEvent) {
+            L.DomEvent.stop(e.originalEvent);
+          }
+          isSelected ? onDeselect() : onSelect(vehicle.id);
+        }
       }}
       zIndexOffset={isSelected ? 1000 : 0}
     />
   );
+};
+
+const StopContent = ({ s, routeLine, passage }: any) => {
+  const lineStr = routeLine || (Array.isArray(s.lines) ? s.lines.join(', ') : s.lines);
+  return (
+    <div className="p-1 font-sans">
+        <div className="text-xs font-bold text-slate-900 select-text">{s.name}</div>
+        {lineStr && <div className="text-[10px] text-slate-500 font-semibold select-text">Linje {lineStr}</div>}
+        {passage && (
+            <div className="mt-1 flex flex-col gap-0.5">
+                {passage.stopped ? (
+                    <>
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
+                            <Clock className="w-3 h-3" />
+                            Ankom: {passage.time} {passage.duration && `(${passage.duration})`}
+                        </div>
+                        {passage.departureTime && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
+                                <Clock className="w-3 h-3 opacity-0" />
+                                Avgick: {passage.departureTime}
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600">
+                        <Clock className="w-3 h-3" />
+                        Passerade {passage.time}
+                    </div>
+                )}
+            </div>
+        )}
+    </div>
+  );
+};
+
+const isSameStop = (a: any, b: any) => {
+    if (!a || !b) return false;
+    if (String(a.id) === String(b.id)) return true;
+    if (a.name && b.name && a.name.trim().toLowerCase() === b.name.trim().toLowerCase()) return true;
+    return false;
+};
+
+const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => {
+    if (!activeStop) return null;
+
+    const isAlreadyRendered = selectedRoutes.some((r: any) => 
+        r.stops?.some((s: any) => isSameStop(s, activeStop))
+    );
+    if (isAlreadyRendered) return null;
+
+    const passage = stopPassages.get(activeStop.id);
+    
+    let lineForColor = activeStop.lines;
+    if (Array.isArray(lineForColor)) lineForColor = lineForColor[0];
+    const standardColor = lineForColor ? getLineColor(String(lineForColor), 'SL') : "#3b82f6";
+
+    return (
+        <CircleMarker 
+            key={"active-stop-standalone-" + activeStop.id}
+            center={[activeStop.lat, activeStop.lng]} 
+            radius={8}
+            fillColor="#3b82f6"
+            fillOpacity={1} 
+            color="#1d4ed8" 
+            weight={4}
+            eventHandlers={{
+                click: (e: any) => {
+                    if (e.originalEvent) {
+                        L.DomEvent.stopPropagation(e.originalEvent);
+                    }
+                }
+            }}
+        >
+            <Tooltip 
+                key={"perm-standalone-" + activeStop.id}
+                permanent 
+                direction="top" 
+                offset={[0, -10]} 
+                opacity={1} 
+                className="custom-tooltip"
+            >
+                <StopContent s={activeStop} routeLine={null} passage={passage} />
+            </Tooltip>
+        </CircleMarker>
+    );
 };
 
 const MapController = ({ center, zoom, bounds }: { center: [number, number]; zoom: number; bounds?: L.LatLngBoundsExpression }) => {
@@ -99,7 +189,20 @@ const SelectedVehicleTracker = ({ selectedVehicleId, vehicles }: { selectedVehic
 
 const EventController = ({ onMapClick }: { onMapClick: () => void }) => {
   useMapEvents({
-    click() {
+    click(e: any) {
+      const target = e.originalEvent?.target as HTMLElement | undefined;
+      if (target) {
+        if (
+          target.tagName === 'path' ||
+          target.tagName === 'circle' ||
+          target.closest('.leaflet-marker-icon') ||
+          target.closest('.leaflet-interactive') ||
+          target.closest('.leaflet-tooltip') ||
+          target.closest('.custom-tooltip')
+        ) {
+          return;
+        }
+      }
       onMapClick();
     }
   });
@@ -167,45 +270,35 @@ export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVeh
                     let markerFill = "#ffffff";
                     if (passage) markerFill = passage.stopped ? "#10b981" : "#f59e0b";
                     
+                    const isActive = isSameStop(s, activeStop);
+
                     return (
                         <CircleMarker 
-                            key={route.id + '-' + s.id + '-' + stopIndex + '-' + markerFill}
+                            key={route.id + '-' + s.id + '-' + stopIndex + '-' + (isActive ? 'active' : 'inactive')}
                             center={[s.lat, s.lng]} 
-                            radius={passage ? 8 : 5}
-                            fillColor={markerFill}
+                            radius={isActive ? 8 : (passage ? 8 : 5)}
+                            fillColor={isActive ? "#3b82f6" : markerFill}
                             fillOpacity={1} 
-                            color={standardColor} 
-                            weight={2} 
-                            eventHandlers={{ click: () => setActiveStop(s) }}
+                            color={isActive ? "#1d4ed8" : standardColor} 
+                            weight={isActive ? 4 : 2} 
+                            eventHandlers={{
+                                click: (e: any) => {
+                                    if (e.originalEvent) {
+                                        L.DomEvent.stopPropagation(e.originalEvent);
+                                    }
+                                    setActiveStop(s);
+                                }
+                            }}
                         >
-                            <Tooltip direction="top" offset={[0, -10]} opacity={0.9} className="custom-tooltip">
-                                <div className="p-1 font-sans">
-                                    <div className="text-xs font-bold text-slate-900">{s.name}</div>
-                                    <div className="text-[10px] text-slate-500 font-semibold">Linje {route.line}</div>
-                                    {passage && (
-                                        <div className="mt-1 flex flex-col gap-0.5">
-                                            {passage.stopped ? (
-                                                <>
-                                                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
-                                                        <Clock className="w-3 h-3" />
-                                                        Ankom: {passage.time} ({passage.duration})
-                                                    </div>
-                                                    {passage.departureTime && (
-                                                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
-                                                            <Clock className="w-3 h-3 opacity-0" />
-                                                            Avgick: {passage.departureTime}
-                                                        </div>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600">
-                                                    <Clock className="w-3 h-3" />
-                                                    Passerade {passage.time}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                            <Tooltip 
+                                key={isActive ? ('perm-' + s.id + '-' + route.id) : ('temp-' + s.id + '-' + route.id)}
+                                permanent={isActive}
+                                direction="top" 
+                                offset={[0, -10]} 
+                                opacity={isActive ? 1 : 0.9} 
+                                className="custom-tooltip"
+                            >
+                                <StopContent s={s} routeLine={route.line} passage={passage} />
                             </Tooltip>
                         </CircleMarker>
                     );
@@ -214,7 +307,7 @@ export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVeh
             );
         })}
 
-        {activeStop && <Marker position={[activeStop.lat, activeStop.lng]}><Popup>{activeStop.name}</Popup></Marker>}
+        <ActiveStopMarker activeStop={activeStop} selectedRoutes={selectedRoutes} stopPassages={stopPassages} />
         
         {history.length > 1 && (
             <Polyline positions={history.map((p: any) => [p.lat, p.lng])} color="#ef4444" weight={3} dashArray="5, 10" opacity={0.8} />
