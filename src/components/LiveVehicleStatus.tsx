@@ -111,7 +111,7 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
   };
 
   return (
-    <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 pointer-events-auto flex flex-col w-full sm:w-[320px] max-h-[60vh] sm:max-h-[80vh] overflow-hidden">
+    <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 pointer-events-auto flex flex-col w-full sm:w-[280px] max-h-[50vh] overflow-hidden">
       <div className="p-4 flex-shrink-0 relative">
         <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-slate-300 hover:text-white transition-colors">
           <X className="w-4 h-4" />
@@ -219,7 +219,7 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                                 </div>
                             </div>
                             {stopDiff && (
-                                <div className={cn("text-[10px] font-mono font-bold shrink-0", stopDiff.color)}>
+                                <div className={cn("text-xs font-mono font-bold shrink-0", stopDiff.color)}>
                                     {stopDiff.text}
                                 </div>
                             )}
