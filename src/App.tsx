@@ -251,15 +251,17 @@ export default function App() {
             }
         }
     } else {
+        activeVehicleIdRef.current = null;
         currentTripIdRef.current = null;
         activeTripIdRef.current = null;
         lastHistoryFetchRef.current = 0;
         setHistory([]);
+        setTripEvents([]);
     }
   }, [selectedVehicleId, vehicles, view]); 
 
   const stopPassages = useMemo(() => {
-    if (selectedRoutes.length === 0 || history.length === 0) return new Map();
+    if (!selectedVehicleId || selectedRoutes.length === 0 || (history.length === 0 && (!tripEvents || tripEvents.length === 0))) return new Map();
     const passages = new Map<string, { time: string, stopped: boolean, duration?: string, departureTime?: string }>();
     
     selectedRoutes.forEach(route => {
@@ -299,12 +301,15 @@ export default function App() {
                     }
                 }
 
-                passages.set(stop.id, {
+                const passageObj = {
                     time: ev.actualArrival ? formatTimeString(ev.actualArrival) : "",
                     stopped: isStopped,
                     duration: durationStr,
-                    departureTime: ev.actualDeparture ? formatTimeString(ev.actualDeparture) : undefined
-                });
+                    departureTime: ev.actualDeparture ? formatTimeString(ev.actualDeparture) : undefined,
+                    stopName: stop.name
+                };
+                passages.set(stop.id, passageObj);
+                passages.set(String(stop.id), passageObj);
 
                 return;
             }
@@ -384,12 +389,15 @@ export default function App() {
                 const arrivalTime = new Date(arrivalTs).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 const departureTimeStr = departureTs ? new Date(departureTs).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : undefined;
 
-                passages.set(stop.id, {
+                const passageObj = {
                     time: arrivalTime,
                     stopped: wasStopped,
                     duration: durationStr,
-                    departureTime: departureTimeStr
-                });
+                    departureTime: departureTimeStr,
+                    stopName: stop.name
+                };
+                passages.set(stop.id, passageObj);
+                passages.set(String(stop.id), passageObj);
             }
         });
     });

@@ -123,6 +123,21 @@ const isSameStop = (a: any, b: any) => {
     return false;
 };
 
+const getPassage = (s: any, stopPassages: Map<string, any>) => {
+    if (!s || !stopPassages || stopPassages.size === 0) return undefined;
+    let p = stopPassages.get(s.id) || stopPassages.get(String(s.id));
+    if (p) return p;
+    if (s.name) {
+        const norm = s.name.trim().toLowerCase();
+        for (const [, val] of stopPassages.entries()) {
+            if (val && val.stopName && val.stopName.trim().toLowerCase() === norm) {
+                return val;
+            }
+        }
+    }
+    return undefined;
+};
+
 const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => {
     if (!activeStop) return null;
 
@@ -131,7 +146,7 @@ const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => 
     );
     if (isAlreadyRendered) return null;
 
-    const passage = stopPassages.get(activeStop.id);
+    const passage = getPassage(activeStop, stopPassages);
     
     let lineForColor = activeStop.lines;
     if (Array.isArray(lineForColor)) lineForColor = lineForColor[0];
@@ -142,7 +157,7 @@ const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => 
             key={"active-stop-standalone-" + activeStop.id}
             center={[activeStop.lat, activeStop.lng]} 
             radius={8}
-            fillColor="#3b82f6"
+            fillColor={passage ? (passage.stopped ? "#10b981" : "#f59e0b") : "#3b82f6"}
             fillOpacity={1} 
             color="#1d4ed8" 
             weight={4}
@@ -280,7 +295,7 @@ export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVeh
             <React.Fragment key={route.id}>
                 <Polyline positions={route.path} color={standardColor} weight={6} opacity={0.6} />
                 {stopsToRender.map((s: any, stopIndex: number) => {
-                    const passage = stopPassages.get(s.id);
+                    const passage = getPassage(s, stopPassages);
                     let markerFill = "#ffffff";
                     if (passage) markerFill = passage.stopped ? "#10b981" : "#f59e0b";
                     
@@ -288,10 +303,10 @@ export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVeh
 
                     return (
                         <CircleMarker 
-                            key={route.id + '-' + s.id + '-' + stopIndex + '-' + (isActive ? 'active' : 'inactive')}
+                            key={route.id + '-' + s.id + '-' + stopIndex + '-' + markerFill + '-' + (isActive ? 'active' : 'inactive')}
                             center={[s.lat, s.lng]} 
                             radius={isActive ? 8 : (passage ? 8 : 5)}
-                            fillColor={isActive ? "#3b82f6" : markerFill}
+                            fillColor={isActive && !passage ? "#3b82f6" : markerFill}
                             fillOpacity={1} 
                             color={isActive ? "#1d4ed8" : standardColor} 
                             weight={isActive ? 4 : 2} 
