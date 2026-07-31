@@ -84,6 +84,19 @@ const MapController = ({ center, zoom, bounds }: { center: [number, number]; zoo
   return null;
 };
 
+const SelectedVehicleTracker = ({ selectedVehicleId, vehicles }: { selectedVehicleId: string | null, vehicles: SLVehicle[] }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (selectedVehicleId) {
+      const v = vehicles.find((v: any) => v.id === selectedVehicleId);
+      if (v) {
+        map.panTo([v.lat, v.lng], { animate: true });
+      }
+    }
+  }, [selectedVehicleId, vehicles, map]);
+  return null;
+};
+
 const EventController = ({ onMapClick }: { onMapClick: () => void }) => {
   useMapEvents({
     click() {
@@ -98,6 +111,7 @@ export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVeh
       <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} zoomControl={false} className="flex-1 w-full h-full z-0">
         <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
         <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} />
+        <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} />
         <EventController onMapClick={() => { setSelectedVehicleId(null); setActiveStop(null); }} />
         
         {selectedRoutes.map((route: any) => {
