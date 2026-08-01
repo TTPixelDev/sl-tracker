@@ -123,9 +123,9 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                 {lineShortName}
             </div>
             <div className="flex flex-col min-w-0">
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1">
-                    <TransportIcon className="w-3 h-3" />
-                    {vehicle.agency === 'WAAB' ? 'Fartyg' : transportInfo.type}
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1 truncate" title={`${vehicle.agency === 'WAAB' ? 'Fartyg' : transportInfo.type} - ${company}`}>
+                    <TransportIcon className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{vehicle.agency === 'WAAB' ? 'Fartyg' : transportInfo.type} - {company}</span>
                 </div>
                 <div className="text-sm font-bold text-white truncate leading-tight">
                     {hasDestination && `mot ${vehicle.destination}`}
@@ -136,12 +136,6 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
 
       <div className="px-4 pb-4 flex-shrink-0">
         <div className={`grid gap-x-6 gap-y-4 ${isBus ? 'grid-cols-2' : 'grid-cols-1'} p-3 bg-white/5 rounded-xl border border-white/5`}>
-            <div className="space-y-1">
-                <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
-                    <Building2 className="w-3 h-3" /> Entreprenör
-                </div>
-                <div className="text-xs font-bold text-slate-200 truncate" title={company}>{company}</div>
-            </div>
             <div className="space-y-1">
                 <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
                     <Hash className="w-3 h-3" /> {isBoat ? 'Fartyg' : 'Vagnsnr'}
@@ -156,15 +150,6 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                 <div className="text-xs font-bold text-slate-200">{roundedSpeed} km/h</div>
             </div>
             )}
-            <div className="space-y-1">
-                <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
-                    <Activity className="w-3 h-3" /> Punktlighet
-                </div>
-                <div className={`text-xs font-bold flex items-center gap-1.5 ${delayStatus.color}`}>
-                    <div className={cn("w-1.5 h-1.5 rounded-full", delayStatus.dot)} />
-                    {delayStatus.text}
-                </div>
-            </div>
         </div>
       </div>
 
