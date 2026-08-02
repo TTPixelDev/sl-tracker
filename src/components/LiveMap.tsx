@@ -197,10 +197,10 @@ const MapController = ({ center, zoom, bounds }: { center: [number, number]; zoo
   return null;
 };
 
-const SelectedVehicleTracker = ({ selectedVehicleId, vehicles }: { selectedVehicleId: string | null, vehicles: SLVehicle[] }) => {
+const SelectedVehicleTracker = ({ selectedVehicleId, vehicles, isFollowingVehicle }: { selectedVehicleId: string | null, vehicles: SLVehicle[], isFollowingVehicle?: boolean }) => {
   const map = useMap();
   useEffect(() => {
-    if (selectedVehicleId && Array.isArray(vehicles)) {
+    if (isFollowingVehicle !== false && selectedVehicleId && Array.isArray(vehicles)) {
       const v = vehicles.find((v: any) => v && v.id === selectedVehicleId);
       if (v && typeof v.lat === 'number' && typeof v.lng === 'number' && !isNaN(v.lat) && !isNaN(v.lng)) {
         try {
@@ -212,7 +212,7 @@ const SelectedVehicleTracker = ({ selectedVehicleId, vehicles }: { selectedVehic
         }
       }
     }
-  }, [selectedVehicleId, vehicles, map]);
+  }, [selectedVehicleId, vehicles, map, isFollowingVehicle]);
   return null;
 };
 
@@ -238,12 +238,12 @@ const EventController = ({ onMapClick }: { onMapClick: () => void }) => {
   return null;
 };
 
-export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents }: any) {
+export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents, isFollowingVehicle }: any) {
   return (
       <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} zoomControl={false} className="flex-1 w-full h-full z-0">
         <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
         <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} />
-        <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} />
+        <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} isFollowingVehicle={isFollowingVehicle} />
         <EventController onMapClick={() => { setSelectedVehicleId(null); setActiveStop(null); }} />
         
         {selectedRoutes.map((route: any) => {

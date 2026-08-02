@@ -41,10 +41,17 @@ export default function App() {
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [tripEvents, setTripEvents] = useState<any[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isFollowingVehicle, setIsFollowingVehicle] = useState(true);
   
   const activeTripIdRef = useRef<string | null>(null);
   const lastHistoryFetchRef = useRef<number>(0);
   const currentTripIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (selectedVehicleId) {
+      setIsFollowingVehicle(true);
+    }
+  }, [selectedVehicleId]);
 
   useEffect(() => {
     (async () => {
@@ -536,6 +543,8 @@ export default function App() {
                         tripEvents={tripEvents}
                         onClose={() => setSelectedVehicleId(null)}
                         selectedRoutes={selectedRoutes}
+                        isFollowingVehicle={isFollowingVehicle}
+                        onToggleFollow={() => setIsFollowingVehicle(prev => !prev)}
                     />
                 ) : (
                     <div className="bg-slate-900/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-white/10 pointer-events-auto w-full sm:w-auto sm:min-w-[280px]">
@@ -600,6 +609,7 @@ export default function App() {
               stopPassages={stopPassages}
               history={history}
               tripEvents={tripEvents}
+              isFollowingVehicle={isFollowingVehicle}
             />
         </>
       ) : (

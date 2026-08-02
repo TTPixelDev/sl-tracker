@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { SLVehicle } from '../types';
-import { Building2, Hash, Gauge, Activity, Bus, Train, Ship, TramFront, TrainFront as SubwayIcon, X, CheckCircle2, XCircle } from 'lucide-react';
+import { Building2, Hash, Gauge, Activity, Bus, Train, Ship, TramFront, TrainFront as SubwayIcon, X, CheckCircle2, XCircle, LocateFixed, Locate } from 'lucide-react';
 import { SHIP_NAMES } from '../constants';
 import { getLineColor, getTransportIcon } from '../utils/mapUtils';
 import clsx, { type ClassValue } from 'clsx';
@@ -16,9 +16,11 @@ interface LiveVehicleStatusProps {
   tripEvents: any[];
   onClose: () => void;
   selectedRoutes: any[];
+  isFollowingVehicle?: boolean;
+  onToggleFollow?: () => void;
 }
 
-const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShortName, tripEvents, onClose, selectedRoutes }) => {
+const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShortName, tripEvents, onClose, selectedRoutes, isFollowingVehicle = true, onToggleFollow }) => {
   if (!vehicle) return null;
 
   const match = vehicle.id ? /([0-9]{3})([0-9]{4})$/.exec(vehicle.id) : null;
@@ -115,10 +117,26 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
   return (
     <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 pointer-events-auto flex flex-col w-full sm:w-[280px] max-h-[50vh] overflow-hidden">
       <div className="p-4 flex-shrink-0 relative">
-        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-slate-300 hover:text-white transition-colors">
-          <X className="w-4 h-4" />
-        </button>
-        <div className="flex items-center gap-3 pr-8">
+        <div className="absolute top-4 right-4 flex items-center gap-1">
+            {onToggleFollow && (
+                <button 
+                    onClick={onToggleFollow} 
+                    className={cn(
+                        "p-1.5 rounded-full transition-colors",
+                        isFollowingVehicle 
+                            ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" 
+                            : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300"
+                    )}
+                    title={isFollowingVehicle ? "Följer fordon" : "Följ fordon"}
+                >
+                    {isFollowingVehicle ? <LocateFixed className="w-4 h-4" /> : <Locate className="w-4 h-4" />}
+                </button>
+            )}
+            <button onClick={onClose} className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-slate-300 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+            </button>
+        </div>
+        <div className="flex items-center gap-3 pr-16">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg shrink-0 shadow-lg text-white" style={{ backgroundColor: lineColorHex }}>
                 {lineShortName}
             </div>
@@ -135,21 +153,19 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
       </div>
 
       <div className="px-4 pb-4 flex-shrink-0">
-        <div className={`grid gap-x-6 gap-y-4 ${isBus ? 'grid-cols-2' : 'grid-cols-1'} p-3 bg-white/5 rounded-xl border border-white/5`}>
+        <div className="grid gap-x-6 gap-y-4 grid-cols-2 p-3 bg-white/5 rounded-xl border border-white/5">
             <div className="space-y-1">
                 <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
                     <Hash className="w-3 h-3" /> {isBoat ? 'Fartyg' : 'Vagnsnr'}
                 </div>
                 <div className="text-xs font-bold text-slate-200 truncate">{vehicleDisplayName}</div>
             </div>
-            {isBus && (
             <div className="space-y-1">
                 <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
                     <Gauge className="w-3 h-3" /> Hastighet
                 </div>
                 <div className="text-xs font-bold text-slate-200">{roundedSpeed} km/h</div>
             </div>
-            )}
         </div>
       </div>
 
