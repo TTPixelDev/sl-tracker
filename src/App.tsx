@@ -48,12 +48,6 @@ export default function App() {
   const currentTripIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (selectedVehicleId) {
-      setIsFollowingVehicle(true);
-    }
-  }, [selectedVehicleId]);
-
-  useEffect(() => {
     (async () => {
       await slService.initialize();
       const m = await slService.getManifest();
