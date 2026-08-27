@@ -241,7 +241,10 @@ const EventController = ({ onMapClick }: { onMapClick: () => void }) => {
 export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents, isFollowingVehicle }: any) {
   return (
       <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} zoomControl={false} className="flex-1 w-full h-full z-0">
-        <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+        <TileLayer 
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' 
+        />
         <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} />
         <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} isFollowingVehicle={isFollowingVehicle} />
         <EventController onMapClick={() => { setSelectedVehicleId(null); setActiveStop(null); }} />
