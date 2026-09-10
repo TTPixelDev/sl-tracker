@@ -28,7 +28,7 @@ export interface SLStop {
 
 export interface SLVehicle {
   id: string;
-  line: string; 
+  line: string;
   tripId: string;
   operator: string;
   vehicleNumber: string;
@@ -38,14 +38,14 @@ export interface SLVehicle {
   speed: number;
   destination: string;
   type: 'Buss' | 'Tåg' | 'Tunnelbana' | 'Spårvagn' | 'Färja';
-  delay?: number; 
+  delay?: number;
   agency?: 'SL' | 'WAAB';
   directionId?: number;
 }
 
 export interface SLLineRoute {
-  id: string; 
-  line: string; 
+  id: string;
+  line: string;
   path: [number, number][];
   stops: SLStop[];
   agency?: 'SL' | 'WAAB';

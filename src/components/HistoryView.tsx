@@ -53,12 +53,12 @@ const getDiff = (scheduled: any, actual: any) => {
     return h * 3600 + m * 60 + s;
   };
   let diffSecs = toSec(actual) - toSec(scheduled);
-  if (diffSecs < -43200) diffSecs += 86400; 
-  if (diffSecs > 43200) diffSecs -= 86400;  
+  if (diffSecs < -43200) diffSecs += 86400;
+  if (diffSecs > 43200) diffSecs -= 86400;
 
   const absDiff = Math.abs(diffSecs);
   if (diffSecs === 0) return { text: 'I tid', color: 'text-emerald-500' };
-  
+
   const sign = diffSecs > 0 ? '+' : '-';
   if (absDiff < 60) {
     return { text: `${sign}${absDiff}s`, color: diffSecs > 0 ? 'text-red-500' : 'text-blue-500' };
@@ -79,9 +79,9 @@ const getDuration = (arrival: any, departure: any) => {
     return h * 3600 + m * 60 + s;
   };
   let diffSecs = toSec(departure) - toSec(arrival);
-  if (diffSecs < -43200) diffSecs += 86400; 
-  if (diffSecs < 0) return { text: '0s' }; 
-  
+  if (diffSecs < -43200) diffSecs += 86400;
+  if (diffSecs < 0) return { text: '0s' };
+
   if (diffSecs < 60) {
     return { text: `${diffSecs}s` };
   }
@@ -95,7 +95,7 @@ export default function HistoryView() {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     const urlDate = params.get('hDate');
     if (urlDate) return urlDate;
-    
+
     const d = new Date();
     d.setHours(d.getHours() - 1);
     return format(d, 'yyyy-MM-dd');
@@ -104,7 +104,7 @@ export default function HistoryView() {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     const urlTime = params.get('hTime');
     if (urlTime) return urlTime;
-    
+
     const d = new Date();
     d.setHours(d.getHours() - 1);
     return format(d, 'HH:mm');
@@ -131,15 +131,15 @@ export default function HistoryView() {
       const urlLineId = queryParams.get('hLine');
       const urlStopId = queryParams.get('hStop');
       const urlAgency = queryParams.get('agency') || 'SL';
-      
+
       if (urlLineId) {
         await slService.initialize();
         const m = await slService.getManifest();
-        
+
         // Find if urlLineId is a short line name in our manifest (e.g. "1") or is already a route ID
         let targetRouteId = urlLineId;
-        const matchedManifest = m.find((x: any) => x.line === urlLineId && x.agency === urlAgency) || 
-                                m.find((x: any) => x.line === urlLineId);
+        const matchedManifest = m.find((x: any) => x.line === urlLineId && x.agency === urlAgency) ||
+          m.find((x: any) => x.line === urlLineId);
         if (matchedManifest) {
           targetRouteId = matchedManifest.id;
         }
@@ -153,7 +153,7 @@ export default function HistoryView() {
             subtitle: r.stops && r.stops.length > 0 ? `${r.stops[0].name} - ${r.stops[r.stops.length - 1].name}` : '',
             agency: r.agency
           };
-          
+
           if (urlStopId) {
             const stops = r.stops || [];
             const stopGroups = new Map<string, string[]>();
@@ -168,7 +168,7 @@ export default function HistoryView() {
               title: name,
               subtitle: 'Hållplats'
             }));
-            
+
             const matchedStop = uniqueStops.find(st => {
               if (st.title.toLowerCase() === urlStopId.toLowerCase()) {
                 return true;
@@ -177,7 +177,7 @@ export default function HistoryView() {
               const searchParts = urlStopId.split(',');
               return parts.some(p => searchParts.includes(p)) || searchParts.some(sp => parts.includes(sp));
             });
-            
+
             setLineStops(uniqueStops);
             setSelectedLine(lineResult);
             if (matchedStop) {
@@ -188,7 +188,7 @@ export default function HistoryView() {
           }
         }
       }
-      
+
       setTimeout(() => {
         isRestoringUrlRef.current = false;
       }, 100);
@@ -200,29 +200,29 @@ export default function HistoryView() {
   useEffect(() => {
     if (isRestoringUrlRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    
+
     params.set('view', 'history');
     params.set('hDate', date);
     params.set('hTime', time);
-    
+
     if (selectedLine) {
       const lineShortName = selectedLine.title.replace(/^Linje\s+/i, '').trim();
       params.set('hLine', lineShortName);
     } else {
       params.delete('hLine');
     }
-    
+
     if (selectedStop) {
       params.set('hStop', selectedStop.title);
     } else {
       params.delete('hStop');
     }
-    
+
     // Clean live parameters when in history view
     params.delete('lines');
     params.delete('stop');
     params.delete('vehicle');
-    
+
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
   }, [date, time, selectedLine, selectedStop]);
@@ -235,7 +235,7 @@ export default function HistoryView() {
           const data = await res.json();
           setHistoryDays(data.days);
         }
-      } catch (err) {}
+      } catch (err) { }
     };
     fetchRange();
   }, []);
@@ -475,7 +475,7 @@ export default function HistoryView() {
                 {[1, 2, 3].map(i => <div key={i} className="bg-white h-32 rounded-3xl animate-pulse border border-slate-200" />)}
               </div>
             )}
-            
+
             {error && (
               <div key="error" className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3">
                 <XCircle className="w-5 h-5" />
@@ -537,7 +537,7 @@ const EventCard: React.FC<{ event: StopEvent, lineName: string }> = ({ event, li
     if (duration < -43200) duration += 86400;
     return duration >= 25;
   })();
-  
+
   return (
     <motion.div layout initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden flex flex-col">
       <button type="button" onClick={() => setExpanded(!expanded)} className="p-4 sm:p-5 text-left flex flex-col w-full relative outline-none focus-visible:bg-slate-50 transition-colors">
@@ -674,7 +674,7 @@ function SearchInput({ label, icon, placeholder, value, onSelect, type, disabled
       return;
     }
     if (query.length < 1) { setResults([]); return; }
-    
+
     const handler = setTimeout(async () => {
       try {
         let data = await slService.search(query);
@@ -689,7 +689,7 @@ function SearchInput({ label, icon, placeholder, value, onSelect, type, disabled
           data = data.filter((d: any) => d.type === 'stop');
         }
         setResults(data);
-      } catch (e) {}
+      } catch (e) { }
     }, 150);
     return () => clearTimeout(handler);
   }, [query, type, predefinedResults, disabled]);

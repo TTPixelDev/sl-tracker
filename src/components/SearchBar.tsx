@@ -33,44 +33,44 @@ const SearchBar: React.FC<SearchBarProps> = ({
         setLoading(true);
         try {
           const res = await slService.search(searchQuery, currentAgency);
-          
+
           let finalResults: SearchResult[] = [];
 
           if (selectedRoutes.length > 0) {
-              const matchingLines = res.filter((r: any) => r.type === 'line');
-              const queryLower = searchQuery.toLowerCase();
-              const matchedStops = new Map<string, SearchResult>();
-              
-              selectedRoutes.forEach(route => {
-                  route.stops.forEach(stop => {
-                      if (stop.name.toLowerCase().includes(queryLower)) {
-                          if (!matchedStops.has(stop.id)) {
-                              matchedStops.set(stop.id, {
-                                  type: 'stop',
-                                  id: stop.id,
-                                  title: stop.name,
-                                  subtitle: currentAgency === 'WAAB' ? 'Brygga' : 'Hållplats',
-                                  agency: stop.agency || 'SL'
-                              });
-                          }
-                      }
-                  });
+            const matchingLines = res.filter((r: any) => r.type === 'line');
+            const queryLower = searchQuery.toLowerCase();
+            const matchedStops = new Map<string, SearchResult>();
+
+            selectedRoutes.forEach(route => {
+              route.stops.forEach(stop => {
+                if (stop.name.toLowerCase().includes(queryLower)) {
+                  if (!matchedStops.has(stop.id)) {
+                    matchedStops.set(stop.id, {
+                      type: 'stop',
+                      id: stop.id,
+                      title: stop.name,
+                      subtitle: currentAgency === 'WAAB' ? 'Brygga' : 'Hållplats',
+                      agency: stop.agency || 'SL'
+                    });
+                  }
+                }
               });
-              finalResults = [...matchingLines, ...Array.from(matchedStops.values())];
+            });
+            finalResults = [...matchingLines, ...Array.from(matchedStops.values())];
           } else {
-              finalResults = res;
+            finalResults = res;
           }
 
           finalResults.sort((a, b) => {
-              if (a.type === 'line' && b.type === 'line') {
-                  const numA = parseInt(a.title.replace(/\D/g, ''));
-                  const numB = parseInt(b.title.replace(/\D/g, ''));
-                  if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                  return a.title.localeCompare(b.title);
-              }
-              if (a.type === 'line') return -1;
-              if (b.type === 'line') return 1;
+            if (a.type === 'line' && b.type === 'line') {
+              const numA = parseInt(a.title.replace(/\D/g, ''));
+              const numB = parseInt(b.title.replace(/\D/g, ''));
+              if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
               return a.title.localeCompare(b.title);
+            }
+            if (a.type === 'line') return -1;
+            if (b.type === 'line') return 1;
+            return a.title.localeCompare(b.title);
           });
 
           setResults(finalResults);
@@ -132,14 +132,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => {
-                if (searchQuery.trim().length > 0) setShowResults(true);
+              if (searchQuery.trim().length > 0) setShowResults(true);
             }}
           />
           {searchQuery && (
             <button
               onClick={() => {
-                  onSearchChange('');
-                  setResults([]);
+                onSearchChange('');
+                setResults([]);
               }}
               className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
             >
@@ -152,8 +152,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
       {showResults && results.length > 0 && (
         <div className="absolute mt-2 w-full bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-[60vh] overflow-y-auto z-[2000] animate-in fade-in slide-in-from-top-2 duration-200">
           {results.map((res, index) => {
-              const TransportIcon = getTransportIcon(res.title, res.agency);
-              return (
+            const TransportIcon = getTransportIcon(res.title, res.agency);
+            return (
               <button
                 key={res.type + '-' + res.id + '-' + index}
                 onClick={() => handleResultClick(res)}
@@ -168,12 +168,12 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-sm font-bold text-white group-hover:text-blue-200 transition-colors truncate">
-                      {res.title}
+                    {res.title}
                   </span>
                   {res.subtitle && (
-                      <span className="text-xs text-slate-400 truncate">
-                          {res.subtitle}
-                      </span>
+                    <span className="text-xs text-slate-400 truncate">
+                      {res.subtitle}
+                    </span>
                   )}
                 </div>
               </button>

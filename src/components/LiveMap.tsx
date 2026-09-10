@@ -33,10 +33,10 @@ const WAAB_DEFAULT_VIEW: MapView = {
 
 const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSelect, onDeselect }) => {
   const isNoBearing = ['7', '12', '21', '25', '26', '27', '28', '29', '30', '31'].includes(lineShortName);
-  
+
   const icon = useMemo(() => {
     const color = getLineColor(lineShortName, vehicle.agency);
-    
+
     let markerHtml = '';
     if (isNoBearing) {
       markerHtml = '<div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; position: relative;">' +
@@ -59,18 +59,18 @@ const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSe
     }
 
     return L.divIcon({
-        className: 'custom-vehicle-icon ' + (isSelected ? 'z-[1000]' : ''),
-        html: markerHtml,
-        iconSize: isNoBearing ? (isSelected ? [48, 48] : [40, 40]) : (isSelected ? [44, 44] : [34, 34]),
-        iconAnchor: isNoBearing ? (isSelected ? [24, 24] : [20, 20]) : (isSelected ? [22, 22] : [17, 17])
-      });
-  }, [vehicle.bearing, lineShortName, vehicle.agency, isSelected, isNoBearing]); 
+      className: 'custom-vehicle-icon ' + (isSelected ? 'z-[1000]' : ''),
+      html: markerHtml,
+      iconSize: isNoBearing ? (isSelected ? [48, 48] : [40, 40]) : (isSelected ? [44, 44] : [34, 34]),
+      iconAnchor: isNoBearing ? (isSelected ? [24, 24] : [20, 20]) : (isSelected ? [22, 22] : [17, 17])
+    });
+  }, [vehicle.bearing, lineShortName, vehicle.agency, isSelected, isNoBearing]);
 
   return (
-    <Marker 
-      position={[vehicle.lat, vehicle.lng]} 
-      icon={icon} 
-      eventHandlers={{ 
+    <Marker
+      position={[vehicle.lat, vehicle.lng]}
+      icon={icon}
+      eventHandlers={{
         click: (e: any) => {
           if (e.originalEvent) {
             L.DomEvent.stop(e.originalEvent);
@@ -87,100 +87,100 @@ const StopContent = ({ s, routeLine, passage }: any) => {
   const lineStr = routeLine || (Array.isArray(s.lines) ? s.lines.join(', ') : s.lines);
   return (
     <div className="p-1 font-sans">
-        <div className="text-xs font-bold text-slate-900 select-text">{s.name}</div>
-        {lineStr && <div className="text-[10px] text-slate-500 font-semibold select-text">Linje {lineStr}</div>}
-        {passage && (
-            <div className="mt-1 flex flex-col gap-0.5">
-                {passage.stopped ? (
-                    <>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
-                            <Clock className="w-3 h-3" />
-                            Ankom: {passage.time} {passage.duration && `(${passage.duration})`}
-                        </div>
-                        {passage.departureTime && (
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
-                                <Clock className="w-3 h-3 opacity-0" />
-                                Avgick: {passage.departureTime}
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600">
-                        <Clock className="w-3 h-3" />
-                        Passerade {passage.time}
-                    </div>
-                )}
+      <div className="text-xs font-bold text-slate-900 select-text">{s.name}</div>
+      {lineStr && <div className="text-[10px] text-slate-500 font-semibold select-text">Linje {lineStr}</div>}
+      {passage && (
+        <div className="mt-1 flex flex-col gap-0.5">
+          {passage.stopped ? (
+            <>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
+                <Clock className="w-3 h-3" />
+                Ankom: {passage.time} {passage.duration && `(${passage.duration})`}
+              </div>
+              {passage.departureTime && (
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
+                  <Clock className="w-3 h-3 opacity-0" />
+                  Avgick: {passage.departureTime}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600">
+              <Clock className="w-3 h-3" />
+              Passerade {passage.time}
             </div>
-        )}
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
 const isSameStop = (a: any, b: any) => {
-    if (!a || !b) return false;
-    if (String(a.id) === String(b.id)) return true;
-    if (a.name && b.name && a.name.trim().toLowerCase() === b.name.trim().toLowerCase()) return true;
-    return false;
+  if (!a || !b) return false;
+  if (String(a.id) === String(b.id)) return true;
+  if (a.name && b.name && a.name.trim().toLowerCase() === b.name.trim().toLowerCase()) return true;
+  return false;
 };
 
 const getPassage = (s: any, stopPassages: Map<string, any>) => {
-    if (!s || !stopPassages || stopPassages.size === 0) return undefined;
-    let p = stopPassages.get(s.id) || stopPassages.get(String(s.id));
-    if (p) return p;
-    if (s.name) {
-        const norm = s.name.trim().toLowerCase();
-        for (const [, val] of stopPassages.entries()) {
-            if (val && val.stopName && val.stopName.trim().toLowerCase() === norm) {
-                return val;
-            }
-        }
+  if (!s || !stopPassages || stopPassages.size === 0) return undefined;
+  let p = stopPassages.get(s.id) || stopPassages.get(String(s.id));
+  if (p) return p;
+  if (s.name) {
+    const norm = s.name.trim().toLowerCase();
+    for (const [, val] of stopPassages.entries()) {
+      if (val && val.stopName && val.stopName.trim().toLowerCase() === norm) {
+        return val;
+      }
     }
-    return undefined;
+  }
+  return undefined;
 };
 
 const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => {
-    if (!activeStop) return null;
+  if (!activeStop) return null;
 
-    const isAlreadyRendered = selectedRoutes.some((r: any) => 
-        r.stops?.some((s: any) => isSameStop(s, activeStop))
-    );
-    if (isAlreadyRendered) return null;
+  const isAlreadyRendered = selectedRoutes.some((r: any) =>
+    r.stops?.some((s: any) => isSameStop(s, activeStop))
+  );
+  if (isAlreadyRendered) return null;
 
-    const passage = getPassage(activeStop, stopPassages);
-    
-    let lineForColor = activeStop.lines;
-    if (Array.isArray(lineForColor)) lineForColor = lineForColor[0];
-    const standardColor = lineForColor ? getLineColor(String(lineForColor), 'SL') : "#3b82f6";
+  const passage = getPassage(activeStop, stopPassages);
 
-    return (
-        <CircleMarker 
-            key={"active-stop-standalone-" + activeStop.id}
-            center={[activeStop.lat, activeStop.lng]} 
-            radius={8}
-            fillColor={passage ? (passage.stopped ? "#10b981" : "#f59e0b") : "#3b82f6"}
-            fillOpacity={1} 
-            color="#1d4ed8" 
-            weight={4}
-            eventHandlers={{
-                click: (e: any) => {
-                    if (e.originalEvent) {
-                        L.DomEvent.stopPropagation(e.originalEvent);
-                    }
-                }
-            }}
-        >
-            <Tooltip 
-                key={"perm-standalone-" + activeStop.id}
-                permanent 
-                direction="top" 
-                offset={[0, -10]} 
-                opacity={1} 
-                className="custom-tooltip"
-            >
-                <StopContent s={activeStop} routeLine={null} passage={passage} />
-            </Tooltip>
-        </CircleMarker>
-    );
+  let lineForColor = activeStop.lines;
+  if (Array.isArray(lineForColor)) lineForColor = lineForColor[0];
+  const standardColor = lineForColor ? getLineColor(String(lineForColor), 'SL') : "#3b82f6";
+
+  return (
+    <CircleMarker
+      key={"active-stop-standalone-" + activeStop.id}
+      center={[activeStop.lat, activeStop.lng]}
+      radius={8}
+      fillColor={passage ? (passage.stopped ? "#10b981" : "#f59e0b") : "#3b82f6"}
+      fillOpacity={1}
+      color="#1d4ed8"
+      weight={4}
+      eventHandlers={{
+        click: (e: any) => {
+          if (e.originalEvent) {
+            L.DomEvent.stopPropagation(e.originalEvent);
+          }
+        }
+      }}
+    >
+      <Tooltip
+        key={"perm-standalone-" + activeStop.id}
+        permanent
+        direction="top"
+        offset={[0, -10]}
+        opacity={1}
+        className="custom-tooltip"
+      >
+        <StopContent s={activeStop} routeLine={null} passage={passage} />
+      </Tooltip>
+    </CircleMarker>
+  );
 };
 
 const MapController = ({ center, zoom, bounds }: { center: [number, number]; zoom: number; bounds?: L.LatLngBoundsExpression }) => {
@@ -192,7 +192,7 @@ const MapController = ({ center, zoom, bounds }: { center: [number, number]; zoo
       } else if (center && typeof center[0] === 'number' && typeof center[1] === 'number') {
         map.setView(center, zoom);
       }
-    } catch (e) {}
+    } catch (e) { }
   }, [center, zoom, bounds, map]);
   return null;
 };
@@ -208,7 +208,7 @@ const SelectedVehicleTracker = ({ selectedVehicleId, vehicles, isFollowingVehicl
         } catch (e) {
           try {
             map.setView([v.lat, v.lng]);
-          } catch (err) {}
+          } catch (err) { }
         }
       }
     }
@@ -238,125 +238,131 @@ const EventController = ({ onMapClick }: { onMapClick: () => void }) => {
   return null;
 };
 
-export default function LiveMap({ vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents, isFollowingVehicle }: any) {
+export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents, isFollowingVehicle }: any) {
   return (
-      <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} zoomControl={false} className="flex-1 w-full h-full z-0">
-        <TileLayer 
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' 
-        />
-        <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} />
-        <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} isFollowingVehicle={isFollowingVehicle} />
-        <EventController onMapClick={() => { setSelectedVehicleId(null); setActiveStop(null); }} />
-        
-        {selectedRoutes.map((route: any) => {
-            const standardColor = route.agency === 'WAAB' ? "#0891b2" : "#3b82f6";
-            
-            // Filter stops based on whether a vehicle is selected or not
-            let stopsToRender = route.stops || [];
-            const selectedVehicle = vehicles.find((v: any) => v.id === selectedVehicleId);
-            const isThisVehicleSelected = selectedVehicle && selectedVehicle.line === route.id;
+    <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} zoomControl={false} className="flex-1 w-full h-full z-0">
+      <TileLayer
+        key={mapStyle}
+        url={mapStyle === 'minimal'
+          ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
+          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
+        attribution={mapStyle === 'minimal'
+          ? 'Tiles &copy; Esri &mdash; Source: Esri, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom'
+          : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
+        maxZoom={19}
+      />
+      <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} />
+      <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} isFollowingVehicle={isFollowingVehicle} />
+      <EventController onMapClick={() => { setSelectedVehicleId(null); setActiveStop(null); }} />
 
-            if (isThisVehicleSelected) {
-                const dirId = selectedVehicle.directionId;
-                
-                // 1. Initial filter based on direction
-                let candidates = [];
-                if (dirId !== undefined) {
-                    candidates = (route.stops || []).filter((s: any) => s.directions && s.directions.includes(dirId));
-                }
-                
-                // Fall back if no candidates found or direction was undefined
-                if (candidates.length === 0) {
-                    candidates = route.stops || [];
-                }
+      {selectedRoutes.map((route: any) => {
+        const standardColor = route.agency === 'WAAB' ? "#0891b2" : "#3b82f6";
 
-                // 2. Clear any name duplicates from candidates to avoid opposite/dual platform circles
-                const seenNames = new Set<string>();
-                stopsToRender = [];
-                for (const s of candidates) {
-                    const normalizedName = s.name.trim().toLowerCase();
-                    if (!seenNames.has(normalizedName)) {
-                        seenNames.add(normalizedName);
-                        stopsToRender.push(s);
-                    }
-                }
-            } else {
-                // Deduplicate stops by name to avoid overlapping/dual opposite platform points
-                const seenNames = new Set<string>();
-                stopsToRender = [];
-                for (const s of (route.stops || [])) {
-                    const normalizedName = s.name.trim().toLowerCase();
-                    if (!seenNames.has(normalizedName)) {
-                        seenNames.add(normalizedName);
-                        stopsToRender.push(s);
-                    }
-                }
+        // Filter stops based on whether a vehicle is selected or not
+        let stopsToRender = route.stops || [];
+        const selectedVehicle = vehicles.find((v: any) => v.id === selectedVehicleId);
+        const isThisVehicleSelected = selectedVehicle && selectedVehicle.line === route.id;
+
+        if (isThisVehicleSelected) {
+          const dirId = selectedVehicle.directionId;
+
+          // 1. Initial filter based on direction
+          let candidates = [];
+          if (dirId !== undefined) {
+            candidates = (route.stops || []).filter((s: any) => s.directions && s.directions.includes(dirId));
+          }
+
+          // Fall back if no candidates found or direction was undefined
+          if (candidates.length === 0) {
+            candidates = route.stops || [];
+          }
+
+          // 2. Clear any name duplicates from candidates to avoid opposite/dual platform circles
+          const seenNames = new Set<string>();
+          stopsToRender = [];
+          for (const s of candidates) {
+            const normalizedName = s.name.trim().toLowerCase();
+            if (!seenNames.has(normalizedName)) {
+              seenNames.add(normalizedName);
+              stopsToRender.push(s);
             }
+          }
+        } else {
+          // Deduplicate stops by name to avoid overlapping/dual opposite platform points
+          const seenNames = new Set<string>();
+          stopsToRender = [];
+          for (const s of (route.stops || [])) {
+            const normalizedName = s.name.trim().toLowerCase();
+            if (!seenNames.has(normalizedName)) {
+              seenNames.add(normalizedName);
+              stopsToRender.push(s);
+            }
+          }
+        }
 
-            return (
-            <React.Fragment key={route.id}>
-                <Polyline positions={route.path} color={standardColor} weight={6} opacity={0.6} />
-                {stopsToRender.map((s: any, stopIndex: number) => {
-                    const passage = getPassage(s, stopPassages);
-                    let markerFill = "#ffffff";
-                    if (passage) markerFill = passage.stopped ? "#10b981" : "#f59e0b";
-                    
-                    const isActive = isSameStop(s, activeStop);
+        return (
+          <React.Fragment key={route.id}>
+            <Polyline positions={route.path} color={standardColor} weight={6} opacity={0.6} />
+            {stopsToRender.map((s: any, stopIndex: number) => {
+              const passage = getPassage(s, stopPassages);
+              let markerFill = "#ffffff";
+              if (passage) markerFill = passage.stopped ? "#10b981" : "#f59e0b";
 
-                    return (
-                        <CircleMarker 
-                            key={route.id + '-' + s.id + '-' + stopIndex + '-' + markerFill + '-' + (isActive ? 'active' : 'inactive')}
-                            center={[s.lat, s.lng]} 
-                            radius={isActive ? 8 : (passage ? 8 : 5)}
-                            fillColor={isActive && !passage ? "#3b82f6" : markerFill}
-                            fillOpacity={1} 
-                            color={isActive ? "#1d4ed8" : standardColor} 
-                            weight={isActive ? 4 : 2} 
-                            eventHandlers={{
-                                click: (e: any) => {
-                                    if (e.originalEvent) {
-                                        L.DomEvent.stopPropagation(e.originalEvent);
-                                    }
-                                    setActiveStop(s);
-                                }
-                            }}
-                        >
-                            <Tooltip 
-                                key={isActive ? ('perm-' + s.id + '-' + route.id) : ('temp-' + s.id + '-' + route.id)}
-                                permanent={isActive}
-                                direction="top" 
-                                offset={[0, -10]} 
-                                opacity={isActive ? 1 : 0.9} 
-                                className="custom-tooltip"
-                            >
-                                <StopContent s={s} routeLine={route.line} passage={passage} />
-                            </Tooltip>
-                        </CircleMarker>
-                    );
-                })}
-            </React.Fragment>
-            );
-        })}
+              const isActive = isSameStop(s, activeStop);
 
-        <ActiveStopMarker activeStop={activeStop} selectedRoutes={selectedRoutes} stopPassages={stopPassages} />
-        
-        {history.length > 1 && (
-            <Polyline positions={history.map((p: any) => [p.lat, p.lng])} color="#ef4444" weight={3} dashArray="5, 10" opacity={0.8} />
-        )}
-        
-        {vehicles.filter((v: any) => showAll || selectedRoutes.some((r: any) => r.id === v.line) || selectedVehicleId === v.id).map((v: any) => {
-            return (
-              <VehicleMarker 
-                  key={v.id} 
-                  vehicle={v} 
-                  lineShortName={routeManifest.get(v.line)?.line || '?'} 
-                  isSelected={selectedVehicleId === v.id} 
-                  onSelect={setSelectedVehicleId} 
-                  onDeselect={() => setSelectedVehicleId((prev: any) => prev === v.id ? null : prev)} 
-              />
-            );
-        })}
-      </MapContainer>
+              return (
+                <CircleMarker
+                  key={route.id + '-' + s.id + '-' + stopIndex + '-' + markerFill + '-' + (isActive ? 'active' : 'inactive')}
+                  center={[s.lat, s.lng]}
+                  radius={isActive ? 8 : (passage ? 8 : 5)}
+                  fillColor={isActive && !passage ? "#3b82f6" : markerFill}
+                  fillOpacity={1}
+                  color={isActive ? "#1d4ed8" : standardColor}
+                  weight={isActive ? 4 : 2}
+                  eventHandlers={{
+                    click: (e: any) => {
+                      if (e.originalEvent) {
+                        L.DomEvent.stopPropagation(e.originalEvent);
+                      }
+                      setActiveStop(s);
+                    }
+                  }}
+                >
+                  <Tooltip
+                    key={isActive ? ('perm-' + s.id + '-' + route.id) : ('temp-' + s.id + '-' + route.id)}
+                    permanent={isActive}
+                    direction="top"
+                    offset={[0, -10]}
+                    opacity={isActive ? 1 : 0.9}
+                    className="custom-tooltip"
+                  >
+                    <StopContent s={s} routeLine={route.line} passage={passage} />
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
+          </React.Fragment>
+        );
+      })}
+
+      <ActiveStopMarker activeStop={activeStop} selectedRoutes={selectedRoutes} stopPassages={stopPassages} />
+
+      {history.length > 1 && (
+        <Polyline positions={history.map((p: any) => [p.lat, p.lng])} color="#ef4444" weight={3} dashArray="5, 10" opacity={0.8} />
+      )}
+
+      {vehicles.filter((v: any) => showAll || selectedRoutes.some((r: any) => r.id === v.line) || selectedVehicleId === v.id).map((v: any) => {
+        return (
+          <VehicleMarker
+            key={v.id}
+            vehicle={v}
+            lineShortName={routeManifest.get(v.line)?.line || '?'}
+            isSelected={selectedVehicleId === v.id}
+            onSelect={setSelectedVehicleId}
+            onDeselect={() => setSelectedVehicleId((prev: any) => prev === v.id ? null : prev)}
+          />
+        );
+      })}
+    </MapContainer>
   );
 }

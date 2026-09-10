@@ -30,7 +30,7 @@ const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAg
     if (!isWAAB || query.length < 1) return [];
     const q = query.toLowerCase();
     return Object.entries(SHIP_NAMES)
-      .filter(([code, name]) => 
+      .filter(([code, name]) =>
         name.toLowerCase().includes(q) || code.includes(q)
       )
       .slice(0, 5);
@@ -77,14 +77,14 @@ const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAg
   return (
     <div ref={containerRef} className="relative bg-slate-900/90 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl flex flex-col gap-2 w-full sm:w-auto sm:min-w-[280px]">
       <div className="bg-slate-800/50 p-1 rounded-xl flex border border-white/5">
-        <button 
-          onClick={() => onAgencyChange('SL')} 
+        <button
+          onClick={() => onAgencyChange('SL')}
           className={`flex-1 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${currentAgency === 'SL' ? 'bg-[#3b82f6] text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:text-white'}`}
         >
           SL
         </button>
-        <button 
-          onClick={() => onAgencyChange('WAAB')} 
+        <button
+          onClick={() => onAgencyChange('WAAB')}
           className={`flex-1 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${currentAgency === 'WAAB' ? 'bg-[#0891b2] text-white shadow-lg shadow-cyan-900/20' : 'text-slate-400 hover:text-white'}`}
         >
           <Ship className="w-3.5 h-3.5" /> WÅAB
@@ -93,46 +93,45 @@ const VehicleSearch: React.FC<VehicleSearchProps> = ({ onVehicleFound, currentAg
 
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
         <div className="relative flex-1">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setShowSuggestions(true);
-                if (error) setError(null);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              placeholder={isWAAB ? "Fartyg..." : "Vagnsnr..."}
-              className="w-full bg-slate-800/50 text-white placeholder-slate-500 text-sm rounded-xl px-3 py-2.5 pr-8 outline-none focus:bg-slate-800 transition-colors border border-transparent focus:border-blue-500/30"
-            />
-            
-            {error && !query && (
-                <div className="absolute right-9 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-bold text-red-400/90 whitespace-nowrap animate-in fade-in slide-in-from-right-1">
-                    {error}
-                </div>
-            )}
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setShowSuggestions(true);
+              if (error) setError(null);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            placeholder={isWAAB ? "Fartyg..." : "Vagnsnr..."}
+            className="w-full bg-slate-800/50 text-white placeholder-slate-500 text-sm rounded-xl px-3 py-2.5 pr-8 outline-none focus:bg-slate-800 transition-colors border border-transparent focus:border-blue-500/30"
+          />
 
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-              {isWAAB ? <Ship className="w-3.5 h-3.5 text-cyan-500 opacity-70" /> : <Hash className="w-3.5 h-3.5 text-slate-500 opacity-70" />}
+          {error && !query && (
+            <div className="absolute right-9 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-bold text-red-400/90 whitespace-nowrap animate-in fade-in slide-in-from-right-1">
+              {error}
             </div>
+          )}
+
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+            {isWAAB ? <Ship className="w-3.5 h-3.5 text-cyan-500 opacity-70" /> : <Hash className="w-3.5 h-3.5 text-slate-500 opacity-70" />}
+          </div>
         </div>
-        <button 
-            type="submit"
-            disabled={loading || !query.trim()}
-            className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 ${
-              isWAAB ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-blue-600 hover:bg-blue-500'
+        <button
+          type="submit"
+          disabled={loading || !query.trim()}
+          className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 ${isWAAB ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-blue-600 hover:bg-blue-500'
             } disabled:bg-slate-700 disabled:cursor-not-allowed text-white`}
         >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
         </button>
       </form>
 
       {lastUpdated && (
-          <div className="text-right sm:text-right text-center -mt-1.5 px-1">
-              <span className="text-[9px] text-slate-500/80 font-medium normal-case tracking-normal drop-shadow-md" title="Senaste GTFS uppdatering">
-                  Statisk data uppdaterad: {lastUpdated.toISOString().split('T')[0]}
-              </span>
-          </div>
+        <div className="text-right sm:text-right text-center -mt-1.5 px-1">
+          <span className="text-[9px] text-slate-500/80 font-medium normal-case tracking-normal drop-shadow-md" title="Senaste GTFS uppdatering">
+            Statisk data uppdaterad: {lastUpdated.toISOString().split('T')[0]}
+          </span>
+        </div>
       )}
 
       {showSuggestions && suggestions.length > 0 && (
