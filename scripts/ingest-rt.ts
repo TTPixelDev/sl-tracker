@@ -39,6 +39,38 @@ const FeedMessage = root.lookupType("transit_realtime.FeedMessage");
 const activeTracking = new Map<string, any>();
 let lastHeartbeat = Date.now();
 let savedEventsToday = 0;
+let currentTrackingDay = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Stockholm',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+}).format(new Date());
+
+const getStockholmDateStr = (d: Date = new Date()) => {
+    return new Intl.DateTimeFormat('sv-SE', {
+        timeZone: 'Europe/Stockholm',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(d);
+};
+
+const getStockholmSeconds = (d: Date) => {
+    const parts = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: 'Europe/Stockholm',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+    }).formatToParts(d);
+    let h = 0, m = 0, s = 0;
+    for (const p of parts) {
+        if (p.type === 'hour') h = parseInt(p.value, 10);
+        if (p.type === 'minute') m = parseInt(p.value, 10);
+        if (p.type === 'second') s = parseInt(p.value, 10);
+    }
+    return (h % 24) * 3600 + m * 60 + s;
+};
 
 async function runIngest() {
     const uri = process.env.MONGODB_URI;
@@ -63,11 +95,37 @@ async function runIngest() {
         const stopsCollection = db.collection("stops");
         const statusCollection = db.collection("status");
 
-        await stopEventsCollection.createIndex({ ts: 1 }, { expireAfterSeconds: HISTORY_EXPIRE_DAYS * 24 * 60 * 60 });
-        await stopEventsCollection.createIndex({ d: 1, l: 1, s: 1, sdm: 1 });
-        await stopEventsCollection.createIndex({ t: 1, ts: -1 });
-        await trailsCollection.createIndex({ tripId: 1 }, { unique: true });
-        await trailsCollection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
+        await stopEventsCollection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(console.error);
+        await stopEventsCollection.createIndex({ d: 1, l: 1, s: 1, sdm: 1 }).catch(console.error);
+        await stopEventsCollection.createIndex({ t: 1, ts: -1 }).catch(console.error);
+        await trailsCollection.createIndex({ tripId: 1 }, { unique: true }).catch(console.error);
+        await trailsCollection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(console.error);
+
+        const cleanupOldStopEvents = async () => {
+            try {
+                const cutoff = new Date();
+                cutoff.setDate(cutoff.getDate() - HISTORY_EXPIRE_DAYS);
+                const cutoffDateStr = getStockholmDateStr(cutoff);
+                const cutoffTs = cutoff.getTime();
+
+                const res = await stopEventsCollection.deleteMany({
+                    $or: [
+                        { d: { $lt: cutoffDateStr } },
+                        { ts: { $lt: cutoffTs } },
+                        { expireAt: { $lt: new Date() } }
+                    ]
+                });
+                if (res.deletedCount > 0) {
+                    console.log(`🧹 Rensade ${res.deletedCount} gamla stop_events äldre än ${HISTORY_EXPIRE_DAYS} dagar (före ${cutoffDateStr}).`);
+                }
+            } catch (e: any) {
+                console.error("⚠️ Fel vid rensning av gamla stop_events:", e?.message || e);
+            }
+        };
+
+        // Kör automatisk rensning vid start och var 12:e timme
+        cleanupOldStopEvents().catch(console.error);
+        setInterval(cleanupOldStopEvents, 12 * 60 * 60 * 1000);
 
         console.log("📦 Hämtar hållplatsdata...");
         const allStops = await stopsCollection.find({}).toArray();
@@ -103,8 +161,14 @@ async function runIngest() {
                 const object: any = FeedMessage.toObject(message, { enums: String, longs: String, defaults: true });
                 const entities = object.entity || [];
 
-                const timeStr = new Date().toLocaleTimeString('sv-SE', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                const timeStr = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 const now = Date.now();
+
+                const todayStockholm = getStockholmDateStr();
+                if (todayStockholm !== currentTrackingDay) {
+                    currentTrackingDay = todayStockholm;
+                    savedEventsToday = 0;
+                }
 
                 if (entities.length === 0) {
                     statusMessage = `Inga fordon hittades (${timeStr})`;
@@ -231,22 +295,23 @@ async function runIngest() {
                             } else if (data.arrivalRegistered && dist > STOP_RADIUS + 25) {
                                 data.completed = true;
                                 const departureTime = new Date();
-                                const dateStr = new Date().toISOString().split('T')[0];
+                                const dateStr = getStockholmDateStr(departureTime);
 
-                                const actualArrivalSeconds = data.arrivalRegistered.getHours() * 3600 + data.arrivalRegistered.getMinutes() * 60 + data.arrivalRegistered.getSeconds();
-                                const actualDepartureSeconds = departureTime.getHours() * 3600 + departureTime.getMinutes() * 60 + departureTime.getSeconds();
+                                const actualArrivalSeconds = getStockholmSeconds(data.arrivalRegistered);
+                                const actualDepartureSeconds = getStockholmSeconds(departureTime);
 
                                 const timeStopped = departureTime.getTime() - data.arrivalRegistered.getTime();
                                 const wasStopped = data.hasStopped || timeStopped >= 25000;
 
                                 const event = {
-                                    _id: `${tripId}_${stopId}`,
+                                    _id: `${dateStr}_${tripId}_${stopId}`,
                                     t: tripId,
                                     l: data.routeId,
                                     dn: data.destinationName,
                                     s: stopId,
                                     d: dateStr,
                                     ts: Date.now(),
+                                    expireAt: new Date(Date.now() + HISTORY_EXPIRE_DAYS * 24 * 60 * 60 * 1000),
                                     sa: typeof data.arrival === 'string' ? (Number(data.arrival.split(':')[0]) * 60 + Number(data.arrival.split(':')[1])) : data.arrival,
                                     sd: typeof data.departure === 'string' ? (Number(data.departure.split(':')[0]) * 60 + Number(data.departure.split(':')[1])) : data.departure,
                                     sdm: data.scheduledMinutes,
@@ -276,7 +341,7 @@ async function runIngest() {
                     }
                 }
             } catch (err: any) {
-                const timeStr = new Date().toLocaleTimeString('sv-SE', {hour: '2-digit', minute:'2-digit'});
+                const timeStr = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
                 statusMessage = `<font color='red'>FEL: Loop-avbrott</font> (${timeStr})`;
                 console.error(`❌ Loop-fel vid ${timeStr}:`, err?.message || err);
             }
