@@ -11,6 +11,7 @@ export interface StopEvent {
   actualArrival: string | null;
   actualDeparture: string | null;
   stopped: boolean;
+  isReglering?: boolean;
   date: string;
   timestamp: number;
   scheduledDepartureMinutes: number;
@@ -24,6 +25,7 @@ export interface SLStop {
   lines?: string[];
   agency?: 'SL' | 'WAAB';
   directions?: number[];
+  isReglering?: boolean;
 }
 
 export interface SLVehicle {

@@ -191,7 +191,7 @@ async function processGTFS() {
         });
 
         console.log('[3.5/6] Sparar resor till databasen...');
-        await db.collection("trips").deleteMany({}); 
+        await db.collection("trips").deleteMany({});
         await db.collection("trips").createIndex({ routeId: 1 });
 
         const tripOps: any[] = [];
@@ -204,7 +204,7 @@ async function processGTFS() {
                 const stopInfo = allStopsMap.get(lastStopId);
                 if (stopInfo) trip.destinationName = stopInfo.name;
             }
-            
+
             tripOps.push({ insertOne: { document: trip } });
             trip.stops.forEach(s => usedStopIdsForDb.add(s.id));
 
@@ -239,27 +239,59 @@ async function processGTFS() {
             const tripId1 = routeToBestTripDir1.get(routeId);
 
             const stimes0 = tripId0 ? (selectedTripStops.get(tripId0) || [])
-                .sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence)) : [];
+                .sort((a, b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence)) : [];
             const stimes1 = tripId1 ? (selectedTripStops.get(tripId1) || [])
-                .sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence)) : [];
+                .sort((a, b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence)) : [];
+
+            const hasInterpolated0 = stimes0.some((st: any) =>
+                (st.arrival_time && !st.arrival_time.endsWith(':00')) || (st.departure_time && !st.departure_time.endsWith(':00'))
+            );
+            const hasInterpolated1 = stimes1.some((st: any) =>
+                (st.arrival_time && !st.arrival_time.endsWith(':00')) || (st.departure_time && !st.departure_time.endsWith(':00'))
+            );
+
+            const isRegStop = (st: any, idx: number, arr: any[], hasInterpolated: boolean) => {
+                if (st.timepoint === '1') return true;
+                if (idx === 0 || idx === arr.length - 1) return true;
+                if (st.arrival_time && st.departure_time && st.arrival_time !== st.departure_time) return true;
+                if (hasInterpolated && (st.arrival_time?.endsWith(':00') || st.departure_time?.endsWith(':00'))) return true;
+                return false;
+            };
 
             const stopsMapForRoute = new Map<string, any>();
-            stimes0.forEach(st => {
+            stimes0.forEach((st, idx) => {
                 const s = allStopsMap.get(st.stop_id);
                 if (s) {
-                    stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency, directions: [0] });
+                    const isReg = isRegStop(st, idx, stimes0, hasInterpolated0);
+                    stopsMapForRoute.set(s.id, {
+                        ...s,
+                        agency: route._app_agency,
+                        directions: [0],
+                        isReglering: isReg,
+                        scheduledArrival: st.arrival_time,
+                        scheduledDeparture: st.departure_time
+                    });
                 }
             });
-            stimes1.forEach(st => {
+            stimes1.forEach((st, idx) => {
                 const s = allStopsMap.get(st.stop_id);
                 if (s) {
+                    const isReg = isRegStop(st, idx, stimes1, hasInterpolated1);
                     const existing = stopsMapForRoute.get(s.id);
                     if (existing) {
                         if (!existing.directions.includes(1)) {
                             existing.directions.push(1);
                         }
+                        if (isReg) existing.isReglering = true;
                     } else {
-                        stopsMapForRoute.set(s.id, { ...s, agency: route._app_agency, directions: [1] });
+                        stopsMapForRoute.set(s.id, {
+                            ...s,
+                            agency: route._app_agency,
+                            directions: [1],
+                            isReglering: isReg,
+                            scheduledArrival: st.arrival_time,
+                            scheduledDeparture: st.departure_time
+                        });
                     }
                 }
             });
@@ -270,7 +302,7 @@ async function processGTFS() {
 
             const shapeId = tripToShapeId.get(tripId);
             const pathPoints = (finalShapesMap.get(shapeId!) || [])
-                .sort((a,b) => a.seq - b.seq)
+                .sort((a, b) => a.seq - b.seq)
                 .map(p => [p.lat, p.lng]);
 
             const lineData = {
@@ -282,12 +314,12 @@ async function processGTFS() {
             };
 
             fs.writeFileSync(path.join(LINES_OUT_DIR, `${routeId}.json`), JSON.stringify(lineData));
-            
+
             const overallBestStimes = (selectedTripStops.get(tripId) || [])
-                .sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
+                .sort((a, b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
             const bestStops = overallBestStimes.map(st => allStopsMap.get(st.stop_id)).filter(Boolean);
             const fromName = bestStops.length > 0 ? bestStops[0].name : stops[0]!.name;
-            const toName = bestStops.length > 0 ? bestStops[bestStops.length-1].name : stops[stops.length-1]!.name;
+            const toName = bestStops.length > 0 ? bestStops[bestStops.length - 1].name : stops[stops.length - 1]!.name;
 
             manifest.push({
                 id: routeId,
@@ -304,7 +336,7 @@ async function processGTFS() {
 
         console.log('[6/6] Sparar hållplatser och rutter till databasen...');
         const dbStops = Array.from(allStopsMap.values()).filter(s => usedStopIdsForDb.has(s.id));
-        
+
         await db.collection("stops").deleteMany({});
         await db.collection("stops").createIndex({ id: 1 });
         if (dbStops.length) {
@@ -337,14 +369,14 @@ async function processGTFS() {
                 const dir = row.direction_id;
                 let destination = row.trip_headsign || "";
                 if (!destination) {
-                     const trip = tripsProcessed.get(row.trip_id);
-                     if (trip) destination = trip.destinationName;
+                    const trip = tripsProcessed.get(row.trip_id);
+                    if (trip) destination = trip.destinationName;
                 }
 
                 if (dir !== undefined && dir !== '' && destination) {
                     if (!routeDirectionStats[row.route_id]) routeDirectionStats[row.route_id] = {};
                     if (!routeDirectionStats[row.route_id][dir]) routeDirectionStats[row.route_id][dir] = {};
-                    
+
                     const currentCount = routeDirectionStats[row.route_id][dir][destination] || 0;
                     routeDirectionStats[row.route_id][dir][destination] = currentCount + 1;
                 }

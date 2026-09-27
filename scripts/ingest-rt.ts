@@ -200,16 +200,25 @@ async function runIngest() {
                         if (!activeTracking.has(tripId)) {
                             const tripDoc = await tripsCollection.findOne({ _id: tripId as any });
                             if (tripDoc && tripDoc.stops) {
+                                const hasInterpolated = tripDoc.stops.some((s: any) =>
+                                    (s.arr && !s.arr.endsWith(':00')) || (s.dep && !s.dep.endsWith(':00'))
+                                );
                                 const stopMap = new Map();
-                                tripDoc.stops.forEach((s: any) => {
+                                tripDoc.stops.forEach((s: any, idx: number) => {
                                     const sInfo = stopLookup.get(s.id);
                                     if (sInfo) {
+                                        const isTerminal = idx === 0 || idx === tripDoc.stops.length - 1;
+                                        const isDwell = s.arr && s.dep && s.arr !== s.dep;
+                                        const isTimepoint = hasInterpolated && (s.arr?.endsWith(':00') || s.dep?.endsWith(':00'));
+                                        const isReg = isTerminal || isDwell || isTimepoint;
+
                                         stopMap.set(s.id, {
                                             routeId: tripDoc.routeId,
                                             destinationName: tripDoc.destinationName,
                                             arrival: s.arr,
                                             departure: s.dep,
                                             scheduledMinutes: s.mins,
+                                            isReglering: isReg,
                                             lat: sInfo.lat,
                                             lng: sInfo.lng,
                                             arrivalRegistered: null,
@@ -317,7 +326,8 @@ async function runIngest() {
                                     sdm: data.scheduledMinutes,
                                     aa: actualArrivalSeconds,
                                     ad: actualDepartureSeconds,
-                                    st: wasStopped
+                                    st: wasStopped,
+                                    reg: Boolean(data.isReglering)
                                 };
 
                                 await stopEventsCollection.updateOne({ _id: event._id as any }, { $set: event }, { upsert: true });

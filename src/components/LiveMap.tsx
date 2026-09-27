@@ -83,11 +83,16 @@ const VehicleMarker: React.FC<any> = ({ vehicle, lineShortName, isSelected, onSe
   );
 };
 
-const StopContent = ({ s, routeLine, passage }: any) => {
+const StopContent = ({ s, routeLine, passage, isReglering }: any) => {
   const lineStr = routeLine || (Array.isArray(s.lines) ? s.lines.join(', ') : s.lines);
+  const isReg = Boolean(isReglering || s.isReglering);
   return (
     <div className="p-1 font-sans">
-      <div className="text-xs font-bold text-slate-900 select-text">{s.name}</div>
+      <div className="flex items-center gap-1.5">
+        <span className={isReg ? "text-xs font-bold text-slate-900 select-text" : "text-xs font-normal text-slate-900 select-text"}>
+          {s.name}
+        </span>
+      </div>
       {lineStr && <div className="text-[10px] text-slate-500 font-semibold select-text">Linje {lineStr}</div>}
       {passage && (
         <div className="mt-1 flex flex-col gap-0.5">
@@ -138,7 +143,7 @@ const getPassage = (s: any, stopPassages: Map<string, any>) => {
   return undefined;
 };
 
-const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => {
+const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages, tripEvents }: any) => {
   if (!activeStop) return null;
 
   const isAlreadyRendered = selectedRoutes.some((r: any) =>
@@ -147,6 +152,7 @@ const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => 
   if (isAlreadyRendered) return null;
 
   const passage = getPassage(activeStop, stopPassages);
+  const isReg = Boolean(activeStop.isReglering || (tripEvents && tripEvents.some((te: any) => String(te.stopId || te.s) === String(activeStop.id) && te.isReglering)));
 
   let lineForColor = activeStop.lines;
   if (Array.isArray(lineForColor)) lineForColor = lineForColor[0];
@@ -156,7 +162,7 @@ const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => 
     <CircleMarker
       key={"active-stop-standalone-" + activeStop.id}
       center={[activeStop.lat, activeStop.lng]}
-      radius={8}
+      radius={isReg ? 9.5 : 8}
       fillColor={passage ? (passage.stopped ? "#10b981" : "#f59e0b") : "#3b82f6"}
       fillOpacity={1}
       color="#1d4ed8"
@@ -177,7 +183,7 @@ const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages }: any) => 
         opacity={1}
         className="custom-tooltip"
       >
-        <StopContent s={activeStop} routeLine={null} passage={passage} />
+        <StopContent s={activeStop} routeLine={null} passage={passage} isReglering={isReg} />
       </Tooltip>
     </CircleMarker>
   );
@@ -309,16 +315,20 @@ export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, s
               if (passage) markerFill = passage.stopped ? "#10b981" : "#f59e0b";
 
               const isActive = isSameStop(s, activeStop);
+              const isReg = Boolean(
+                s.isReglering ||
+                (tripEvents && tripEvents.some((te: any) => String(te.stopId || te.s) === String(s.id) && te.isReglering))
+              );
 
               return (
                 <CircleMarker
                   key={route.id + '-' + s.id + '-' + stopIndex + '-' + markerFill + '-' + (isActive ? 'active' : 'inactive')}
                   center={[s.lat, s.lng]}
-                  radius={isActive ? 8 : (passage ? 8 : 5)}
+                  radius={isActive ? 9.5 : (passage ? (isReg ? 8.5 : 7.5) : (isReg ? 7 : 4.5))}
                   fillColor={isActive && !passage ? "#3b82f6" : markerFill}
                   fillOpacity={1}
-                  color={isActive ? "#1d4ed8" : standardColor}
-                  weight={isActive ? 4 : 2}
+                  color={isActive ? "#1d4ed8" : (isReg ? (route.agency === 'WAAB' ? "#0e7490" : "#1e40af") : standardColor)}
+                  weight={isActive ? 4 : (isReg ? 3 : 2)}
                   eventHandlers={{
                     click: (e: any) => {
                       if (e.originalEvent) {
@@ -336,7 +346,7 @@ export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, s
                     opacity={isActive ? 1 : 0.9}
                     className="custom-tooltip"
                   >
-                    <StopContent s={s} routeLine={route.line} passage={passage} />
+                    <StopContent s={s} routeLine={route.line} passage={passage} isReglering={isReg} />
                   </Tooltip>
                 </CircleMarker>
               );
@@ -345,7 +355,7 @@ export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, s
         );
       })}
 
-      <ActiveStopMarker activeStop={activeStop} selectedRoutes={selectedRoutes} stopPassages={stopPassages} />
+      <ActiveStopMarker activeStop={activeStop} selectedRoutes={selectedRoutes} stopPassages={stopPassages} tripEvents={tripEvents} />
 
       {history.length > 1 && (
         <Polyline positions={history.map((p: any) => [p.lat, p.lng])} color="#ef4444" weight={3} dashArray="5, 10" opacity={0.8} />

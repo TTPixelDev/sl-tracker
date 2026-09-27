@@ -190,13 +190,49 @@ class SLService {
   }
 
   async getLineRoute(routeId: string): Promise<SLLineRoute | null> {
+    let routeData: SLLineRoute | null = null;
     try {
       const res = await fetch(`/data/lines/${routeId}.json`);
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (e) {
-      return null; // Handle if json doesn't exist
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.stops) && data.stops.length > 0) {
+          routeData = data;
+        }
+      }
+    } catch (e) { }
+
+    if (!routeData) {
+      try {
+        const res = await fetch(`/api/line-route?routeId=${routeId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.stops) && data.stops.length > 0) {
+            routeData = data;
+          }
+        }
+      } catch (e) { }
     }
+
+    if (routeData && Array.isArray(routeData.stops)) {
+      const hasInterpolated = routeData.stops.some((s: any) => {
+        const a = s.scheduledArrival || s.arr;
+        const d = s.scheduledDeparture || s.dep;
+        return (a && !a.endsWith(':00')) || (d && !d.endsWith(':00'));
+      });
+
+      routeData.stops.forEach((s: any, idx: number) => {
+        if (s.isReglering === undefined) {
+          const isTerminal = idx === 0 || idx === routeData!.stops.length - 1;
+          const a = s.scheduledArrival || s.arr;
+          const d = s.scheduledDeparture || s.dep;
+          const isDwell = a && d && a !== d;
+          const isTimepoint = hasInterpolated && ((a && a.endsWith(':00')) || (d && d.endsWith(':00')));
+          s.isReglering = isTerminal || isDwell || isTimepoint;
+        }
+      });
+    }
+
+    return routeData;
   }
 
   async getStopInfo(stopId: string): Promise<SLStop | null> {

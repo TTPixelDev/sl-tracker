@@ -212,6 +212,24 @@ app.get("/api/trip-events", async (req, res) => {
     // Fetch all events for that specific trip run (same date as the recent event)
     const events = await db.collection("stop_events").find({ t: tripId, d: targetDate }).sort({ ts: 1 }).toArray();
 
+    // Look up trip in trips collection to accurately identify regleringshållplatser
+    const tripDoc = await db.collection("trips").findOne({ _id: tripId as any });
+    const regleringStopIds = new Set<string>();
+
+    if (tripDoc && Array.isArray(tripDoc.stops) && tripDoc.stops.length > 0) {
+      const hasInterpolated = tripDoc.stops.some((s: any) =>
+        (s.arr && !s.arr.endsWith(':00')) || (s.dep && !s.dep.endsWith(':00'))
+      );
+      tripDoc.stops.forEach((s: any, idx: number) => {
+        const isTerminal = idx === 0 || idx === tripDoc.stops.length - 1;
+        const isDwell = s.arr && s.dep && s.arr !== s.dep;
+        const isTimepoint = hasInterpolated && (s.arr?.endsWith(':00') || s.dep?.endsWith(':00'));
+        if (isTerminal || isDwell || isTimepoint) {
+          regleringStopIds.add(String(s.id));
+        }
+      });
+    }
+
     const formatTime = (secs: any) => {
       if (secs == null || isNaN(Number(secs))) return null;
       let h = Math.floor(Number(secs) / 3600) % 24;
@@ -220,14 +238,20 @@ app.get("/api/trip-events", async (req, res) => {
       return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
-    res.status(200).json(events.map(e => ({
-      stopId: e.s,
-      stopped: e.st,
-      actualArrival: formatTime(e.aa),
-      actualDeparture: formatTime(e.ad),
-      scheduledDeparture: formatTime(e.sd != null ? e.sd * 60 : null),
-      scheduledArrival: formatTime(e.sa != null ? e.sa * 60 : null)
-    })));
+    res.status(200).json(events.map(e => {
+      const isReg = e.reg != null
+        ? Boolean(e.reg)
+        : (regleringStopIds.has(String(e.s)) || (e.sa != null && e.sd != null && e.sa !== e.sd));
+      return {
+        stopId: e.s,
+        stopped: e.st,
+        isReglering: isReg,
+        actualArrival: formatTime(e.aa),
+        actualDeparture: formatTime(e.ad),
+        scheduledDeparture: formatTime(e.sd != null ? e.sd * 60 : null),
+        scheduledArrival: formatTime(e.sa != null ? e.sa * 60 : null)
+      };
+    }));
   } catch (e: any) {
     handleDbError(e);
     res.status(200).json([]);
@@ -350,6 +374,65 @@ app.get("/api/line-stops", async (req, res) => {
   } catch (e: any) {
     handleDbError(e);
     res.status(200).json({ stops: [] });
+  }
+});
+
+app.get("/api/line-route", async (req, res) => {
+  try {
+    const { routeId } = req.query;
+    if (!routeId || typeof routeId !== "string") return res.status(400).json({ error: "Missing routeId" });
+    const db = await getDb("sl-times");
+    const route = await db.collection("routes").findOne({ id: routeId });
+    const trips = await db.collection("trips").find({ routeId }).toArray();
+    if (!trips.length) return res.status(404).json({ error: "Route not found" });
+
+    trips.sort((a, b) => (b.stops?.length || 0) - (a.stops?.length || 0));
+    const bestTrip = trips[0];
+
+    const hasInterpolated = bestTrip.stops?.some((s: any) =>
+      (s.arr && !s.arr.endsWith(':00')) || (s.dep && !s.dep.endsWith(':00'))
+    );
+
+    const stopIds = new Set<string>();
+    trips.forEach(t => t.stops?.forEach((s: any) => stopIds.add(String(s.id))));
+    const dbStops = await db.collection("stops").find({ id: { $in: Array.from(stopIds) } }).toArray();
+    const stopDocMap = new Map(dbStops.map(s => [String(s.id), s]));
+
+    const stops: any[] = [];
+    bestTrip.stops?.forEach((st: any, idx: number) => {
+      const sDoc = stopDocMap.get(String(st.id));
+      if (sDoc) {
+        const isTerminal = idx === 0 || idx === bestTrip.stops.length - 1;
+        const isDwell = st.arr && st.dep && st.arr !== st.dep;
+        const isTimepoint = hasInterpolated && (st.arr?.endsWith(':00') || st.dep?.endsWith(':00'));
+        const isReg = isTerminal || isDwell || isTimepoint;
+
+        stops.push({
+          id: sDoc.id,
+          name: sDoc.name,
+          lat: sDoc.lat,
+          lng: sDoc.lng,
+          agency: route?.agency || 'SL',
+          isReglering: isReg,
+          scheduledArrival: st.arr,
+          scheduledDeparture: st.dep
+        });
+      }
+    });
+
+    const lineData = {
+      id: routeId,
+      line: route?.line || bestTrip.routeId,
+      agency: route?.agency || 'SL',
+      path: stops.map(s => [s.lat, s.lng]),
+      stops: stops
+    };
+
+    res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600");
+    return res.status(200).json(lineData);
+  } catch (e: any) {
+    handleDbError(e);
+    res.status(500).json({ error: e.message });
   }
 });
 

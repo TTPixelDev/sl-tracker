@@ -189,22 +189,38 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                             })();
 
                             let stopName = te.stopName;
-                            if (!stopName) {
+                            let isStopReglering = Boolean(te.isReglering);
+                            if (!stopName || !isStopReglering) {
                                 for (const route of selectedRoutes) {
                                     const found = route.stops?.find((s: any) => String(s.id) === String(te.stopId || te.s));
                                     if (found) {
-                                        stopName = found.name;
+                                        if (!stopName) stopName = found.name;
+                                        if (found.isReglering) isStopReglering = true;
                                         break;
                                     }
                                 }
+                            }
+
+                            if (!isStopReglering && te.scheduledArrival && te.scheduledDeparture && te.scheduledArrival !== te.scheduledDeparture) {
+                                isStopReglering = true;
                             }
 
                             const isLatest = i === 0;
 
                             return (
                                 <div key={i} className="relative flex items-center gap-3">
-                                    <div className={cn("absolute -left-[21px] top-1.5 w-[11px] h-[11px] rounded-full border-2", isLatest ? "bg-blue-500 border-slate-900 ring-2 ring-blue-500/50" : "bg-slate-800 border-slate-500")} />
-                                    <div className="w-10 shrink-0 text-xs font-mono font-bold text-slate-400 mt-0.5">
+                                    <div className={cn(
+                                        "absolute -left-[21px] top-1.5 rounded-full border-2 transition-all",
+                                        isLatest
+                                            ? "w-[12px] h-[12px] bg-blue-500 border-slate-900 ring-2 ring-blue-500/50"
+                                            : isStopReglering
+                                                ? "w-[12px] h-[12px] bg-blue-600/80 border-blue-400 ring-1 ring-blue-400/40"
+                                                : "w-[11px] h-[11px] bg-slate-800 border-slate-500"
+                                    )} />
+                                    <div className={cn(
+                                        "w-10 shrink-0 text-xs font-mono mt-0.5",
+                                        isStopReglering ? "font-bold text-slate-200" : "font-normal text-slate-400"
+                                    )}>
                                         {formatActualTime(te.actualDeparture || te.ad || te.actualArrival || te.aa)}
                                     </div>
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -217,8 +233,13 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                                                 <XCircle className="w-3.5 h-3.5 text-amber-500" />
                                             </span>
                                         )}
-                                        <div className={cn("font-semibold text-xs truncate", isLatest ? "text-white font-bold" : "text-slate-300")}>
-                                            {stopName || `Hållplats ${te.stopId || te.s}`}
+                                        <div className={cn(
+                                            "text-xs truncate",
+                                            isStopReglering
+                                                ? "font-bold text-white"
+                                                : "font-normal text-slate-400"
+                                        )}>
+                                            <span className="truncate">{stopName || `Hållplats ${te.stopId || te.s}`}</span>
                                         </div>
                                     </div>
                                     {stopDiff && (
