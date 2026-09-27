@@ -210,7 +210,7 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                             return (
                                 <div key={i} className="relative flex items-center gap-3">
                                     <div className={cn(
-                                        "absolute -left-[21px] top-1.5 rounded-full border-2 transition-all",
+                                        "absolute -left-[21px] top-1/2 -translate-y-1/2 rounded-full border-2 transition-all",
                                         isLatest
                                             ? "w-[12px] h-[12px] bg-blue-500 border-slate-900 ring-2 ring-blue-500/50"
                                             : isStopReglering
@@ -218,7 +218,7 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                                                 : "w-[11px] h-[11px] bg-slate-800 border-slate-500"
                                     )} />
                                     <div className={cn(
-                                        "w-10 shrink-0 text-xs font-mono mt-0.5",
+                                        "w-10 shrink-0 text-xs font-mono",
                                         isStopReglering ? "font-bold text-slate-200" : "font-normal text-slate-400"
                                     )}>
                                         {formatActualTime(te.actualDeparture || te.ad || te.actualArrival || te.aa)}

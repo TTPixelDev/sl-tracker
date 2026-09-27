@@ -612,8 +612,8 @@ const EventCard: React.FC<{ event: StopEvent, lineName: string }> = ({ event, li
 
                     return (
                       <div key={i} className={cn("relative flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4", isCurrent ? "opacity-100" : "opacity-75 hover:opacity-100 transition-opacity")}>
-                        <div className={cn("absolute -left-[21px] top-1.5 w-[11px] h-[11px] rounded-full border-2", isCurrent ? "bg-blue-500 border-white ring-2 ring-blue-200" : "bg-white border-slate-300")} />
-                        <div className="w-16 shrink-0 text-sm font-mono font-bold text-slate-500 mt-0.5 sm:mt-0">
+                        <div className={cn("absolute -left-[21px] top-1.5 sm:top-1/2 sm:-translate-y-1/2 w-[11px] h-[11px] rounded-full border-2", isCurrent ? "bg-blue-500 border-white ring-2 ring-blue-200" : "bg-white border-slate-300")} />
+                        <div className="w-16 shrink-0 text-sm font-mono font-bold text-slate-500 sm:mt-0">
                           {formatActualTime(te.actualDeparture || te.ad)}
                         </div>
                         <div className="flex items-center gap-2 flex-1 min-w-0">
