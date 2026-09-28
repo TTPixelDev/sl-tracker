@@ -115,7 +115,7 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
     };
 
     return (
-        <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 pointer-events-auto flex flex-col w-full sm:w-[280px] max-h-[50vh] overflow-hidden">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <div className="p-4 flex-shrink-0 relative">
                 <div className="absolute top-4 right-4 flex items-center gap-1">
                     {onToggleFollow && (
