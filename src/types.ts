@@ -66,4 +66,6 @@ export interface HistoryPoint {
   lng: number;
   ts: number;
   delay?: number;
+  time?: string;
+  speed?: number;
 }
