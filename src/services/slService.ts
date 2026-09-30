@@ -126,49 +126,89 @@ class SLService {
     } catch (e) { console.error("Kunde inte ladda data över nätverket:", e); }
   }
 
-  async search(query: string, currentAgency?: 'SL' | 'WAAB'): Promise<SearchResult[]> {
+  async search(query: string, currentAgency?: 'SL' | 'WAAB', searchType?: 'line' | 'stop'): Promise<SearchResult[]> {
     await this.initialize();
-    if (query.trim().length < 1) return [];
+    const trimmed = query.trim();
+    if (trimmed.length < 1) return [];
 
-    // First ask the generic api
+    const isLine = searchType === 'line' || (searchType !== 'stop' && (
+      /^\d{1,3}[a-zA-Z]?$/i.test(trimmed) ||
+      /^(linje|line|l)\s*([0-9a-zA-Z]+)?$/i.test(trimmed)
+    ));
+    const targetType = searchType || (isLine ? 'line' : 'stop');
+
+    // First ask the server API with explicit type
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=route`); // we can try
+      const agencyParam = currentAgency ? `&agency=${currentAgency}` : '';
+      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&type=${targetType}${agencyParam}`);
       if (res.ok) {
         const data = await res.json();
-        if (data && data.length > 0) return data;
+        if (data && Array.isArray(data) && data.length > 0) return data;
       }
     } catch (e) { }
 
     // Fallback to local DB
-    const q = query.toLowerCase();
+    const q = trimmed.toLowerCase();
     const db = await this.getDB();
 
     return new Promise(resolve => {
       const results: SearchResult[] = [];
       const tx = db.transaction(['routes', 'stops'], 'readonly');
 
-      tx.objectStore('routes').openCursor().onsuccess = (e) => {
-        const cursor = (e.target as any).result;
-        if (cursor) {
-          const r = cursor.value as LineManifestEntry;
-          if (results.length < 50 && r.line.toLowerCase().includes(q) && (!currentAgency || r.agency === currentAgency)) {
-            results.push({ type: 'line', id: r.id, title: `Linje ${r.line}`, subtitle: `${r.from} - ${r.to}`, agency: r.agency });
-          }
-          cursor.continue();
-        } else {
-          tx.objectStore('stops').openCursor().onsuccess = (e2) => {
-            const c2 = (e2.target as any).result;
-            if (c2 && results.length < 100) {
-              const s = c2.value as SLStop;
-              const stopAgency = s.agency || 'SL';
-              if (s.name.toLowerCase().includes(q) && (!currentAgency || stopAgency === currentAgency)) {
-                results.push({ type: 'stop', id: s.id, title: s.name, subtitle: currentAgency === 'WAAB' ? 'Brygga' : 'Hållplats', agency: stopAgency });
+      if (targetType === 'line') {
+        const cleanLine = q.replace(/^(linje|line|l)\s*/i, '').trim();
+        tx.objectStore('routes').openCursor().onsuccess = (e) => {
+          const cursor = (e.target as any).result;
+          if (cursor) {
+            const r = cursor.value as LineManifestEntry;
+            if (results.length < 30 && (!currentAgency || r.agency === currentAgency)) {
+              const lineStr = (r.line || '').toLowerCase();
+              if (lineStr.startsWith(cleanLine) || (cleanLine.length > 1 && lineStr.includes(cleanLine))) {
+                results.push({ type: 'line', id: r.id, title: `Linje ${r.line}`, subtitle: `${r.from} - ${r.to}`, agency: r.agency });
               }
-              c2.continue();
-            } else resolve(results);
-          };
-        }
-      };
+            }
+            cursor.continue();
+          } else {
+            // Sort numerically
+            results.sort((a, b) => {
+              const numA = parseInt(a.title.replace(/\D/g, ''));
+              const numB = parseInt(b.title.replace(/\D/g, ''));
+              if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+              return a.title.localeCompare(b.title);
+            });
+            resolve(results);
+          }
+        };
+      } else {
+        // STOP SEARCH ONLY
+        const seenNames = new Set<string>();
+        tx.objectStore('stops').openCursor().onsuccess = (e) => {
+          const cursor = (e.target as any).result;
+          if (cursor && results.length < 30) {
+            const s = cursor.value as SLStop;
+            const stopAgency = s.agency || 'SL';
+            const normName = (s.name || '').trim().toLowerCase();
+            if (normName.includes(q) && (!currentAgency || stopAgency === currentAgency)) {
+              if (!seenNames.has(normName)) {
+                seenNames.add(normName);
+                results.push({
+                  type: 'stop',
+                  id: s.id,
+                  title: s.name,
+                  subtitle: stopAgency === 'WAAB' ? 'Brygga' : 'Hållplats',
+                  agency: stopAgency,
+                  lat: s.lat,
+                  lng: s.lng
+                });
+              }
+            }
+            cursor.continue();
+          } else {
+            results.sort((a, b) => a.title.localeCompare(b.title));
+            resolve(results);
+          }
+        };
+      }
     });
   }
 
@@ -236,11 +276,24 @@ class SLService {
   }
 
   async getStopInfo(stopId: string): Promise<SLStop | null> {
-    const db = await this.getDB();
-    return new Promise(resolve => {
-      const req = db.transaction('stops', 'readonly').objectStore('stops').get(stopId);
-      req.onsuccess = () => resolve(req.result);
-    });
+    try {
+      const db = await this.getDB();
+      const local: SLStop = await new Promise(resolve => {
+        const req = db.transaction('stops', 'readonly').objectStore('stops').get(stopId);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null as any);
+      });
+      if (local) return local;
+    } catch (e) { }
+
+    try {
+      const res = await fetch(`/api/stop?id=${encodeURIComponent(stopId)}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) { }
+
+    return null;
   }
 
   async getLiveVehicles(currentAgency?: 'SL' | 'WAAB'): Promise<SLVehicle[]> {

@@ -114,75 +114,114 @@ export const SmartSearchBar: React.FC<SmartSearchBarProps> = ({
                 return () => clearTimeout(timer);
             }
         } else {
-            // 1-3 digits or text: search lines and stops
+            // 1-3 digits or text: strictly separate Line Search vs Stop Search
             setVehicleSuggestion(null);
 
-            // Check WÅAB ship names if boat agency
-            if (currentAgency === 'WAAB' && trimmed.length >= 1) {
-                const qLower = trimmed.toLowerCase();
-                const matchingShips = Object.entries(SHIP_NAMES)
-                    .filter(([code, name]) => name.toLowerCase().includes(qLower) || code.toLowerCase().includes(qLower))
-                    .map(([code, name]) => ({ code, name }))
-                    .slice(0, 4);
-                setShipSuggestions(matchingShips);
-            } else {
+            // Check if query is a Line Search (numbers / "linje <num>")
+            const isLineSearch = /^\d{1,3}[a-zA-Z]?$/i.test(trimmed) || /^(linje|line|l)\s*([0-9a-zA-Z]+)?$/i.test(trimmed);
+
+            if (isLineSearch) {
+                // LINE SEARCH: Show ONLY lines! Never show stops.
                 setShipSuggestions([]);
-            }
+                setLoading(true);
 
-            setLoading(true);
-            const timer = setTimeout(async () => {
-                try {
-                    const res = await slService.search(trimmed, currentAgency);
-                    let finalResults: SearchResult[] = [];
-
-                    if (selectedRoutes.length > 0) {
-                        const matchingLines = res.filter((r: any) => r.type === 'line');
-                        const queryLower = trimmed.toLowerCase();
-                        const matchedStops = new Map<string, SearchResult>();
-
-                        selectedRoutes.forEach(route => {
-                            (route.stops || []).forEach(stop => {
-                                if (stop.name.toLowerCase().includes(queryLower)) {
-                                    if (!matchedStops.has(stop.id)) {
-                                        matchedStops.set(stop.id, {
-                                            type: 'stop',
-                                            id: stop.id,
-                                            title: stop.name,
-                                            subtitle: currentAgency === 'WAAB' ? 'Brygga' : 'Hållplats',
-                                            agency: stop.agency || 'SL'
-                                        });
-                                    }
-                                }
-                            });
-                        });
-                        finalResults = [...matchingLines, ...Array.from(matchedStops.values())];
-                    } else {
-                        finalResults = res;
+                const timer = setTimeout(async () => {
+                    try {
+                        const lines = await slService.search(trimmed, currentAgency, 'line');
+                        setResults(lines);
+                        setShowDropdown(true);
+                    } catch (e) {
+                        console.error('Line search error', e);
+                    } finally {
+                        setLoading(false);
                     }
+                }, 100);
 
-                    // Sort lines naturally, then stops
-                    finalResults.sort((a, b) => {
-                        if (a.type === 'line' && b.type === 'line') {
-                            const numA = parseInt(a.title.replace(/\D/g, ''));
-                            const numB = parseInt(b.title.replace(/\D/g, ''));
-                            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                            return a.title.localeCompare(b.title);
-                        }
-                        if (a.type === 'line') return -1;
-                        if (b.type === 'line') return 1;
-                        return a.title.localeCompare(b.title);
-                    });
-
-                    setResults(finalResults.slice(0, 20));
-                    setShowDropdown(true);
-                } catch (e) {
-                    console.error('Search error', e);
-                } finally {
-                    setLoading(false);
+                return () => clearTimeout(timer);
+            } else {
+                // STOP SEARCH: Show ONLY stops! Never show lines.
+                // Check WÅAB ship names if boat agency
+                if (currentAgency === 'WAAB' && trimmed.length >= 1) {
+                    const qLower = trimmed.toLowerCase();
+                    const matchingShips = Object.entries(SHIP_NAMES)
+                        .filter(([code, name]) => name.toLowerCase().includes(qLower) || code.toLowerCase().includes(qLower))
+                        .map(([code, name]) => ({ code, name }))
+                        .slice(0, 4);
+                    setShipSuggestions(matchingShips);
+                } else {
+                    setShipSuggestions([]);
                 }
-            }, 100);
 
-            return () => clearTimeout(timer);
+                setLoading(true);
+                const timer = setTimeout(async () => {
+                    try {
+                        const queryLower = trimmed.toLowerCase();
+                        let finalStops: SearchResult[] = [];
+
+                        if (selectedRoutes.length > 0) {
+                            // Rule: "har jag sökt på en eller flera linjer så ska endast hållplatser som trafikeras av valda linjer visas."
+                            const matchedStopsMap = new Map<string, { stop: SLStop; lines: string[] }>();
+
+                            selectedRoutes.forEach(route => {
+                                (route.stops || []).forEach(stop => {
+                                    if (stop.name && stop.name.toLowerCase().includes(queryLower)) {
+                                        const normName = stop.name.trim().toLowerCase();
+                                        if (!matchedStopsMap.has(normName)) {
+                                            matchedStopsMap.set(normName, {
+                                                stop,
+                                                lines: route.line ? [route.line] : []
+                                            });
+                                        } else {
+                                            const entry = matchedStopsMap.get(normName)!;
+                                            if (route.line && !entry.lines.includes(route.line)) {
+                                                entry.lines.push(route.line);
+                                            }
+                                        }
+                                    }
+                                });
+                            });
+
+                            finalStops = Array.from(matchedStopsMap.values()).map(({ stop, lines }) => ({
+                                type: 'stop' as const,
+                                id: stop.id,
+                                title: stop.name,
+                                subtitle: lines.length > 0
+                                    ? `Linje ${lines.join(', ')} · ${stop.agency === 'WAAB' ? 'Brygga' : 'Hållplats'}`
+                                    : (stop.agency === 'WAAB' ? 'Brygga' : 'Hållplats'),
+                                agency: stop.agency || 'SL',
+                                lat: stop.lat,
+                                lng: stop.lng
+                            }));
+                        } else {
+                            // No lines selected: search all stops across the network
+                            const stops = await slService.search(trimmed, currentAgency, 'stop');
+                            finalStops = stops;
+                        }
+
+                        // Sort stops: exact match, then startsWith, then alphabetical
+                        finalStops.sort((a, b) => {
+                            const aLower = a.title.toLowerCase();
+                            const bLower = b.title.toLowerCase();
+                            if (aLower === queryLower && bLower !== queryLower) return -1;
+                            if (bLower === queryLower && aLower !== queryLower) return 1;
+                            const aStarts = aLower.startsWith(queryLower);
+                            const bStarts = bLower.startsWith(queryLower);
+                            if (aStarts && !bStarts) return -1;
+                            if (!aStarts && bStarts) return 1;
+                            return a.title.localeCompare(b.title);
+                        });
+
+                        setResults(finalStops.slice(0, 30));
+                        setShowDropdown(true);
+                    } catch (e) {
+                        console.error('Stop search error', e);
+                    } finally {
+                        setLoading(false);
+                    }
+                }, 100);
+
+                return () => clearTimeout(timer);
+            }
         }
     }, [query, currentAgency, selectedRoutes, vehicles]);
 
@@ -190,13 +229,32 @@ export const SmartSearchBar: React.FC<SmartSearchBarProps> = ({
         if (item.type === 'line') {
             await onSelectRoute(item.id);
         } else {
-            const stopInfo = await slService.getStopInfo(item.id);
+            let stopInfo = await slService.getStopInfo(item.id);
+            if (!stopInfo && item.lat && item.lng) {
+                stopInfo = {
+                    id: item.id,
+                    name: item.title,
+                    lat: item.lat,
+                    lng: item.lng,
+                    agency: item.agency
+                };
+            }
+            if (!stopInfo) {
+                for (const r of selectedRoutes) {
+                    const s = (r.stops || []).find(st => String(st.id) === String(item.id) || st.name.toLowerCase() === item.title.toLowerCase());
+                    if (s) {
+                        stopInfo = s;
+                        break;
+                    }
+                }
+            }
             if (stopInfo) {
                 onSelectStop(stopInfo);
             }
         }
         setQuery('');
         setShowDropdown(false);
+        setResults([]);
     };
 
     const handleSelectVehicleByNum = async (vNum: string) => {
@@ -295,7 +353,7 @@ export const SmartSearchBar: React.FC<SmartSearchBarProps> = ({
             )}
 
             {/* Autocomplete Dropdown */}
-            {showDropdown && (vehicleSuggestion || results.length > 0 || shipSuggestions.length > 0) && (
+            {showDropdown && (vehicleSuggestion || results.length > 0 || shipSuggestions.length > 0 || (!loading && query.trim().length > 0)) && (
                 <div className="absolute top-full left-0 right-0 mt-1.5 z-[2000] rounded-2xl border shadow-2xl overflow-hidden max-h-[70vh] overflow-y-auto animate-in fade-in slide-in-from-top-1 bg-slate-900/95 border-slate-700/80 text-white backdrop-blur-xl">
                     {/* 4-digit Vehicle Result Card */}
                     {vehicleSuggestion && (
@@ -368,11 +426,30 @@ export const SmartSearchBar: React.FC<SmartSearchBarProps> = ({
                         </div>
                     )}
 
-                    {/* Lines & Stops Results */}
+                    {/* Empty state when no matches */}
+                    {results.length === 0 && !loading && !vehicleSuggestion && shipSuggestions.length === 0 && query.trim().length > 0 && (
+                        <div className="p-4 text-center text-xs text-slate-400">
+                            {(/^\d{1,3}[a-zA-Z]?$/i.test(query.trim()) || /^(linje|line|l)\s*/i.test(query.trim()))
+                                ? `Inga linjer matchar "${query.trim()}"`
+                                : (selectedRoutes.length > 0
+                                    ? `Inga hållplatser på valda linjer matchar "${query.trim()}"`
+                                    : `Inga hållplatser matchar "${query.trim()}"`
+                                )
+                            }
+                        </div>
+                    )}
+
+                    {/* Lines or Stops Results */}
                     {results.length > 0 && (
                         <div className="p-1">
                             <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                Linjer & Hållplatser
+                                {results[0]?.type === 'line'
+                                    ? 'Linjer'
+                                    : (selectedRoutes.length > 0
+                                        ? (currentAgency === 'WAAB' ? 'Bryggor på valda linjer' : 'Hållplatser på valda linjer')
+                                        : (currentAgency === 'WAAB' ? 'Bryggor' : 'Hållplatser')
+                                    )
+                                }
                             </div>
                             <div className="space-y-0.5">
                                 {results.map((item, idx) => {

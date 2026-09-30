@@ -18,17 +18,17 @@ app.get("/", async (req, res, next) => {
       return next();
     }
 
-    let dynamicTitle = "SL Tracker";
+    let dynamicTitle = "SL-Tracker";
     if (hLine && hStop) {
-      dynamicTitle = `SL Tracker - Linje ${hLine} ${hStop}`;
+      dynamicTitle = `SL-Tracker - Linje ${hLine} ${hStop}`;
     } else if (hLine) {
-      dynamicTitle = `SL Tracker - Linje ${hLine}`;
+      dynamicTitle = `SL-Tracker - Linje ${hLine}`;
     } else if (lines && vehicle) {
-      dynamicTitle = `SL Tracker - Linje ${lines} Vagn ${vehicle}`;
+      dynamicTitle = `SL-Tracker - Linje ${lines} Vagn ${vehicle}`;
     } else if (lines) {
-      dynamicTitle = `SL Tracker - Linje ${lines}`;
+      dynamicTitle = `SL-Tracker - Linje ${lines}`;
     } else if (vehicle) {
-      dynamicTitle = `SL Tracker - Vagn ${vehicle}`;
+      dynamicTitle = `SL-Tracker - Vagn ${vehicle}`;
     }
 
     // Fetch the underlying static HTML page from the Vercel edge/deployment
@@ -340,19 +340,121 @@ app.get("/api/data-range", async (req, res) => {
   }
 });
 
+app.get("/api/stop", async (req, res) => {
+  try {
+    const { id } = req.query;
+    if (!id || typeof id !== "string") return res.status(400).json({ error: "Missing stop id" });
+    const db = await getDb("sl-times");
+    const stop = await db.collection("stops").findOne({ id: String(id) });
+    if (!stop) return res.status(404).json({ error: "Stop not found" });
+    res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600");
+    return res.status(200).json(stop);
+  } catch (e: any) {
+    handleDbError(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/search", async (req, res) => {
   try {
-    const { q, type } = req.query;
-    if (typeof q !== "string" || !q) return res.status(200).json([]);
+    const { q, type, agency } = req.query;
+    if (typeof q !== "string" || !q.trim()) return res.status(200).json([]);
     const db = await getDb("sl-times");
-    if (type === "stop") {
-      const stops = await db.collection("stops").find({ name: { $regex: q, $options: "i" } }).limit(15).toArray();
-      return res.status(200).json(stops.map(s => ({ type: "stop", id: s.id, title: s.name, subtitle: "Hållplats" })));
+    const queryStr = q.trim();
+
+    // A line query is either explicitly requested (type === "line")
+    // or type is not "stop" AND query starts with digits or "linje"/"line"/"l "
+    const isLineQuery = type === "line" || (
+      type !== "stop" && (
+        /^\d{1,3}[a-zA-Z]?$/i.test(queryStr) ||
+        /^(linje|line|l)\s*([0-9a-zA-Z]+)?$/i.test(queryStr)
+      )
+    );
+
+    if (type === "stop" || (!isLineQuery && type !== "line")) {
+      // STOP SEARCH ONLY: Never return routes
+      const escaped = queryStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      let filter: any = { name: new RegExp(escaped, 'i') };
+      if (agency && (agency === 'SL' || agency === 'WAAB')) {
+        filter.agency = agency;
+      }
+
+      const rawStops = await db.collection("stops").find(filter).limit(80).toArray();
+
+      // Deduplicate stops by name
+      const seenNames = new Set<string>();
+      const stops: any[] = [];
+      for (const s of rawStops) {
+        const norm = s.name.trim().toLowerCase();
+        if (!seenNames.has(norm)) {
+          seenNames.add(norm);
+          stops.push({
+            type: "stop",
+            id: s.id,
+            title: s.name,
+            subtitle: s.agency === 'WAAB' ? "Brygga" : "Hållplats",
+            agency: s.agency || 'SL',
+            lat: s.lat,
+            lng: s.lng
+          });
+        }
+        if (stops.length >= 25) break;
+      }
+      // Sort stops: exact match first, then startsWith, then others alphabetically
+      const qLower = queryStr.toLowerCase();
+      stops.sort((a, b) => {
+        const aLower = a.title.toLowerCase();
+        const bLower = b.title.toLowerCase();
+        if (aLower === qLower && bLower !== qLower) return -1;
+        if (bLower === qLower && aLower !== qLower) return 1;
+        const aStarts = aLower.startsWith(qLower);
+        const bStarts = bLower.startsWith(qLower);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return a.title.localeCompare(b.title);
+      });
+
+      return res.status(200).json(stops);
     } else {
-      const routes = await db.collection("routes").find({
-        $or: [{ line: { $regex: q, $options: "i" } }, { from: { $regex: q, $options: "i" } }, { to: { $regex: q, $options: "i" } }]
-      }).limit(15).toArray();
-      return res.status(200).json(routes.map(r => ({ type: "line", id: r.id, title: `Linje ${r.line}`, subtitle: `${r.from} - ${r.to}` })));
+      // LINE SEARCH ONLY: Never return stops or match endpoints
+      const cleanLineQ = queryStr.replace(/^(linje|line|l)\s*/i, '').trim();
+      const escaped = cleanLineQ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      let baseFilter: any = {};
+      if (agency && (agency === 'SL' || agency === 'WAAB')) {
+        baseFilter.agency = agency;
+      }
+
+      // Try startsWith first (e.g. searching '4' gives lines starting with 4)
+      let routes = await db.collection("routes")
+        .find({ ...baseFilter, line: new RegExp(`^${escaped}`, 'i') })
+        .limit(30)
+        .toArray();
+
+      if (routes.length === 0 && escaped.length > 0) {
+        routes = await db.collection("routes")
+          .find({ ...baseFilter, line: new RegExp(escaped, 'i') })
+          .limit(30)
+          .toArray();
+      }
+
+      // Sort lines numerically
+      routes.sort((a, b) => {
+        const numA = parseInt(a.line.replace(/\D/g, ''));
+        const numB = parseInt(b.line.replace(/\D/g, ''));
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+          return numA - numB;
+        }
+        return a.line.localeCompare(b.line);
+      });
+
+      return res.status(200).json(routes.map(r => ({
+        type: "line",
+        id: r.id,
+        title: `Linje ${r.line}`,
+        subtitle: `${r.from} - ${r.to}`,
+        agency: r.agency || 'SL'
+      })));
     }
   } catch (e: any) {
     handleDbError(e);

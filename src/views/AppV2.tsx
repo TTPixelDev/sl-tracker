@@ -438,8 +438,7 @@ export default function AppV2() {
 
     // Handler: Select a stop from search
     const handleSelectStop = (stop: SLStop) => {
-        setSelectedVehicleId(null);
-        setHistory([]);
+        setIsFollowingVehicle(false);
         setActiveStop(stop);
         setMapConfig({ center: [stop.lat, stop.lng], zoom: 16 });
     };
@@ -498,7 +497,7 @@ export default function AppV2() {
         return (
             <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
                 <RefreshCw className="w-10 h-10 animate-spin text-blue-500 mb-4" />
-                <span className="font-semibold text-sm">Laddar SL-Tracker v2...</span>
+                <span className="font-semibold text-sm">Laddar SL-Tracker...</span>
             </div>
         );
     }

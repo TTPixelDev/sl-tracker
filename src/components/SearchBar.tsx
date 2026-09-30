@@ -29,49 +29,48 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (searchQuery && searchQuery.trim().length > 0) {
+      const trimmed = searchQuery ? searchQuery.trim() : '';
+      if (trimmed.length > 0) {
         setLoading(true);
         try {
-          const res = await slService.search(searchQuery, currentAgency);
+          const isLineSearch = /^\d{1,3}[a-zA-Z]?$/i.test(trimmed) || /^(linje|line|l)\s*([0-9a-zA-Z]+)?$/i.test(trimmed);
 
           let finalResults: SearchResult[] = [];
 
-          if (selectedRoutes.length > 0) {
-            const matchingLines = res.filter((r: any) => r.type === 'line');
-            const queryLower = searchQuery.toLowerCase();
-            const matchedStops = new Map<string, SearchResult>();
-
-            selectedRoutes.forEach(route => {
-              route.stops.forEach(stop => {
-                if (stop.name.toLowerCase().includes(queryLower)) {
-                  if (!matchedStops.has(stop.id)) {
-                    matchedStops.set(stop.id, {
-                      type: 'stop',
-                      id: stop.id,
-                      title: stop.name,
-                      subtitle: currentAgency === 'WAAB' ? 'Brygga' : 'Hållplats',
-                      agency: stop.agency || 'SL'
-                    });
-                  }
-                }
-              });
-            });
-            finalResults = [...matchingLines, ...Array.from(matchedStops.values())];
+          if (isLineSearch) {
+            // Line search only
+            finalResults = await slService.search(trimmed, currentAgency, 'line');
           } else {
-            finalResults = res;
-          }
+            // Stop search only
+            if (selectedRoutes.length > 0) {
+              const queryLower = trimmed.toLowerCase();
+              const matchedStops = new Map<string, SearchResult>();
 
-          finalResults.sort((a, b) => {
-            if (a.type === 'line' && b.type === 'line') {
-              const numA = parseInt(a.title.replace(/\D/g, ''));
-              const numB = parseInt(b.title.replace(/\D/g, ''));
-              if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-              return a.title.localeCompare(b.title);
+              selectedRoutes.forEach(route => {
+                (route.stops || []).forEach(stop => {
+                  if (stop.name && stop.name.toLowerCase().includes(queryLower)) {
+                    const norm = stop.name.trim().toLowerCase();
+                    if (!matchedStops.has(norm)) {
+                      matchedStops.set(norm, {
+                        type: 'stop',
+                        id: stop.id,
+                        title: stop.name,
+                        subtitle: route.line ? `Linje ${route.line} · ${stop.agency === 'WAAB' ? 'Brygga' : 'Hållplats'}` : (stop.agency === 'WAAB' ? 'Brygga' : 'Hållplats'),
+                        agency: stop.agency || 'SL',
+                        lat: stop.lat,
+                        lng: stop.lng
+                      });
+                    }
+                  }
+                });
+              });
+              finalResults = Array.from(matchedStops.values());
+            } else {
+              finalResults = await slService.search(trimmed, currentAgency, 'stop');
             }
-            if (a.type === 'line') return -1;
-            if (b.type === 'line') return 1;
-            return a.title.localeCompare(b.title);
-          });
+
+            finalResults.sort((a, b) => a.title.localeCompare(b.title));
+          }
 
           setResults(finalResults);
           setShowResults(true);

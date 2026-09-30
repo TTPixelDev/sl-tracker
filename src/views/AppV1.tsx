@@ -454,7 +454,7 @@ export default function AppV1() {
                 setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
             }
         } else {
-            setSelectedVehicleId(null); setHistory([]);
+            setIsFollowingVehicle(false);
             const s = await slService.getStopInfo(res.id);
             if (s) {
                 setActiveStop(s);

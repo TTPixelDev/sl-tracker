@@ -59,6 +59,8 @@ export interface SearchResult {
   title: string;
   subtitle?: string;
   agency?: 'SL' | 'WAAB';
+  lat?: number;
+  lng?: number;
 }
 
 export interface HistoryPoint {
