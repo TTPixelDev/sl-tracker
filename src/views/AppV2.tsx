@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { slService } from '../services/slService';
 import { SLVehicle, SLLineRoute, SLStop, HistoryPoint } from '../types';
@@ -140,29 +140,29 @@ export default function AppV2() {
 
     // Update document title
     useEffect(() => {
-        let newTitle = 'SL-Tracker';
+        let newTitle = 'SL Tracker';
         if (view === 'live') {
             if (selectedRoutes.length > 0 && selectedVehicleId) {
                 const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
                 const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
                 const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                newTitle = `SL-Tracker - Linje ${linesStr} Vagn ${vId}`;
+                newTitle = `SL Tracker - Linje ${linesStr} Vagn ${vId}`;
             } else if (selectedRoutes.length > 0) {
                 const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
-                newTitle = `SL-Tracker - Linje ${linesStr}`;
+                newTitle = `SL Tracker - Linje ${linesStr}`;
             } else if (selectedVehicleId) {
                 const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
                 const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                newTitle = `SL-Tracker - Vagn ${vId}`;
+                newTitle = `SL Tracker - Vagn ${vId}`;
             }
         } else {
             const params = new URLSearchParams(window.location.search);
             const hLine = params.get('hLine');
             const hStop = params.get('hStop');
             if (hLine && hStop) {
-                newTitle = `SL-Tracker - Linje ${hLine} ${hStop}`;
+                newTitle = `SL Tracker - Linje ${hLine} ${hStop}`;
             } else if (hLine) {
-                newTitle = `SL-Tracker - Linje ${hLine}`;
+                newTitle = `SL Tracker - Linje ${hLine}`;
             }
         }
         document.title = newTitle;
@@ -420,6 +420,12 @@ export default function AppV2() {
         return passages;
     }, [history, selectedRoutes, selectedVehicleId, tripEvents]);
 
+    // Helper to get default map config
+    const getDefaultMapConfig = useCallback(() => ({
+        center: (agency === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686]) as [number, number],
+        zoom: agency === 'WAAB' ? 10 : 12
+    }), [agency]);
+
     // Handler: Select a line from search
     const handleSelectRoute = async (routeId: string) => {
         setSelectedVehicleId(null);
@@ -436,11 +442,30 @@ export default function AppV2() {
         }
     };
 
-    // Handler: Select a stop from search
+    // Handler: Select a stop from search (preserves vehicle marking!)
     const handleSelectStop = (stop: SLStop) => {
         setIsFollowingVehicle(false);
         setActiveStop(stop);
         setMapConfig({ center: [stop.lat, stop.lng], zoom: 16 });
+    };
+
+    // Handler: Deselect / remove active stop search (restores panning, preserves vehicle!)
+    const handleRemoveStop = () => {
+        setActiveStop(null);
+        if (selectedVehicleId) {
+            const v = vehicles.find(veh => veh.id === selectedVehicleId);
+            if (v) {
+                setIsFollowingVehicle(true);
+                setMapConfig({ center: [v.lat, v.lng], zoom: 14 });
+                return;
+            }
+        }
+        if (selectedRoutes.length > 0) {
+            const b = L.latLngBounds(selectedRoutes.flatMap(route => route.path));
+            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+        } else {
+            setMapConfig(getDefaultMapConfig());
+        }
     };
 
     // Handler: Select a vehicle (e.g. from 4-digit search or map click)
@@ -462,7 +487,7 @@ export default function AppV2() {
         setTimeout(() => setSelectedVehicleId(v.id), 50);
     };
 
-    // Handler: Remove route
+    // Handler: Remove route (restores panning)
     const handleRemoveRoute = (routeId: string) => {
         const updated = selectedRoutes.filter(r => r.id !== routeId);
         setSelectedRoutes(updated);
@@ -472,13 +497,14 @@ export default function AppV2() {
             setHistory([]);
             setTripEvents([]);
             activeTripIdRef.current = null;
+            setMapConfig(getDefaultMapConfig());
         } else {
             const b = L.latLngBounds(updated.flatMap(route => route.path));
             setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
         }
     };
 
-    // Handler: Clear all routes and vehicle selection
+    // Handler: Clear all routes, stops, and vehicle selection (restores panning)
     const handleClearAll = () => {
         setSelectedRoutes([]);
         setSelectedVehicleId(null);
@@ -486,6 +512,23 @@ export default function AppV2() {
         setHistory([]);
         setTripEvents([]);
         activeTripIdRef.current = null;
+        setMapConfig(getDefaultMapConfig());
+    };
+
+    // Map click handler: Deselecting active stop or vehicle
+    const handleMapClick = () => {
+        if (activeStop) {
+            // If a stop was active, clicking map deselects the stop, restores panning, and DOES NOT drop vehicle!
+            handleRemoveStop();
+        } else if (selectedVehicleId) {
+            setSelectedVehicleId(null);
+            if (selectedRoutes.length > 0) {
+                const b = L.latLngBounds(selectedRoutes.flatMap(route => route.path));
+                setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+            } else {
+                setMapConfig(getDefaultMapConfig());
+            }
+        }
     };
 
     const selectedVehicleObj = useMemo(() => {
@@ -497,7 +540,7 @@ export default function AppV2() {
         return (
             <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
                 <RefreshCw className="w-10 h-10 animate-spin text-blue-500 mb-4" />
-                <span className="font-semibold text-sm">Laddar SL-Tracker...</span>
+                <span className="font-semibold text-sm">Laddar SL Tracker v2...</span>
             </div>
         );
     }
@@ -532,6 +575,8 @@ export default function AppV2() {
                         onRemoveRoute={handleRemoveRoute}
                         onClearAll={handleClearAll}
                         vehicles={vehicles}
+                        activeStop={activeStop}
+                        onRemoveStop={handleRemoveStop}
                     />
 
                     {/* Docked Left Sidebar for Vehicle & Driven Stops */}
@@ -540,7 +585,15 @@ export default function AppV2() {
                             vehicle={selectedVehicleObj}
                             lineShortName={routeManifest.get(selectedVehicleObj.line || '')?.line || '?'}
                             tripEvents={tripEvents}
-                            onClose={() => setSelectedVehicleId(null)}
+                            onClose={() => {
+                                setSelectedVehicleId(null);
+                                if (selectedRoutes.length > 0) {
+                                    const b = L.latLngBounds(selectedRoutes.flatMap(route => route.path));
+                                    setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+                                } else if (!activeStop) {
+                                    setMapConfig(getDefaultMapConfig());
+                                }
+                            }}
                             selectedRoutes={selectedRoutes}
                             isFollowingVehicle={isFollowingVehicle}
                             onToggleFollow={() => setIsFollowingVehicle(prev => !prev)}
@@ -564,6 +617,7 @@ export default function AppV2() {
                             history={history}
                             tripEvents={tripEvents}
                             isFollowingVehicle={isFollowingVehicle}
+                            onMapClick={handleMapClick}
                         />
                     </div>
                 </>

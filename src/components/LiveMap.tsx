@@ -244,7 +244,7 @@ const EventController = ({ onMapClick }: { onMapClick: () => void }) => {
   return null;
 };
 
-export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents, isFollowingVehicle }: any) {
+export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, selectedVehicleId, setSelectedVehicleId, routeManifest, mapConfig, activeStop, setActiveStop, stopPassages, history, tripEvents, isFollowingVehicle, onMapClick }: any) {
   return (
     <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} zoomControl={false} className="flex-1 w-full h-full z-0">
       <TileLayer
@@ -259,7 +259,7 @@ export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, s
       />
       <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} />
       <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} isFollowingVehicle={isFollowingVehicle} />
-      <EventController onMapClick={() => { setSelectedVehicleId(null); setActiveStop(null); }} />
+      <EventController onMapClick={onMapClick || (() => { setSelectedVehicleId(null); setActiveStop(null); })} />
 
       {selectedRoutes.map((route: any) => {
         const standardColor = route.agency === 'WAAB' ? "#0891b2" : "#3b82f6";

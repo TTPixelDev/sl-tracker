@@ -425,6 +425,10 @@ export default function AppV1() {
         setHistory([]);
         setTripEvents([]);
         activeTripIdRef.current = null;
+        setMapConfig({
+            center: agency === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686],
+            zoom: agency === 'WAAB' ? 10 : 12
+        });
     };
 
     const handleRemoveRoute = (routeId: string) => {
@@ -436,6 +440,10 @@ export default function AppV1() {
             setHistory([]);
             setTripEvents([]);
             activeTripIdRef.current = null;
+            setMapConfig({
+                center: agency === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686],
+                zoom: agency === 'WAAB' ? 10 : 12
+            });
         } else {
             const b = L.latLngBounds(updated.flatMap(route => route.path));
             setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
