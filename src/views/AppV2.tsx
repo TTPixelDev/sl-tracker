@@ -3,7 +3,6 @@ import { RefreshCw } from 'lucide-react';
 import { slService } from '../services/slService';
 import { SLVehicle, SLLineRoute, SLStop, HistoryPoint } from '../types';
 import LiveMap from '../components/LiveMap';
-import HistoryView from '../components/HistoryView';
 import { NavbarV2 } from '../components/v2/NavbarV2';
 import { LineChipsBar } from '../components/v2/LineChipsBar';
 import { VehicleSidebar } from '../components/v2/VehicleSidebar';
@@ -11,13 +10,6 @@ import L from 'leaflet';
 
 export default function AppV2() {
     const [loading, setLoading] = useState(true);
-
-    // View: live or history
-    const [view, setView] = useState<'live' | 'history'>(() => {
-        const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-        const v = params.get('view');
-        return v === 'history' ? 'history' : 'live';
-    });
 
     // Map style: standard or minimal
     const [mapStyle, setMapStyle] = useState<'standard' | 'minimal'>(() => {
@@ -141,71 +133,58 @@ export default function AppV2() {
     // Update document title
     useEffect(() => {
         let newTitle = 'SL Tracker';
-        if (view === 'live') {
-            if (selectedRoutes.length > 0 && selectedVehicleId) {
-                const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
-                const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
-                const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                newTitle = `SL Tracker - Linje ${linesStr} Vagn ${vId}`;
-            } else if (selectedRoutes.length > 0) {
-                const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
-                newTitle = `SL Tracker - Linje ${linesStr}`;
-            } else if (selectedVehicleId) {
-                const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
-                const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                newTitle = `SL Tracker - Vagn ${vId}`;
-            }
-        } else {
-            const params = new URLSearchParams(window.location.search);
-            const hLine = params.get('hLine');
-            const hStop = params.get('hStop');
-            if (hLine && hStop) {
-                newTitle = `SL Tracker - Linje ${hLine} ${hStop}`;
-            } else if (hLine) {
-                newTitle = `SL Tracker - Linje ${hLine}`;
-            }
+        if (selectedRoutes.length > 0 && selectedVehicleId) {
+            const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
+            const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+            const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
+            newTitle = `SL Tracker - Linje ${linesStr} Vagn ${vId}`;
+        } else if (selectedRoutes.length > 0) {
+            const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
+            newTitle = `SL Tracker - Linje ${linesStr}`;
+        } else if (selectedVehicleId) {
+            const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+            const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
+            newTitle = `SL Tracker - Vagn ${vId}`;
         }
         document.title = newTitle;
-    }, [view, selectedRoutes, selectedVehicleId, vehicles]);
+    }, [selectedRoutes, selectedVehicleId, vehicles]);
 
     // Sync state to URL query parameters
     useEffect(() => {
         if (loading) return;
         const params = new URLSearchParams(window.location.search);
 
-        params.set('view', view);
         params.set('agency', agency);
+        params.delete('view');
 
-        if (view === 'live') {
-            if (selectedRoutes.length > 0) {
-                params.set('lines', selectedRoutes.map(r => r.line || r.id).join(','));
-            } else {
-                params.delete('lines');
-            }
-
-            if (activeStop) {
-                params.set('stop', activeStop.id);
-            } else {
-                params.delete('stop');
-            }
-
-            if (selectedVehicleId) {
-                const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
-                const displayVehicleId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                params.set('vehicle', displayVehicleId);
-            } else {
-                params.delete('vehicle');
-            }
-
-            params.delete('hDate');
-            params.delete('hTime');
-            params.delete('hLine');
-            params.delete('hStop');
+        if (selectedRoutes.length > 0) {
+            params.set('lines', selectedRoutes.map(r => r.line || r.id).join(','));
+        } else {
+            params.delete('lines');
         }
+
+        if (activeStop) {
+            params.set('stop', activeStop.id);
+        } else {
+            params.delete('stop');
+        }
+
+        if (selectedVehicleId) {
+            const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+            const displayVehicleId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
+            params.set('vehicle', displayVehicleId);
+        } else {
+            params.delete('vehicle');
+        }
+
+        params.delete('hDate');
+        params.delete('hTime');
+        params.delete('hLine');
+        params.delete('hStop');
 
         const newUrl = `${window.location.pathname}?${params.toString()}`;
         window.history.replaceState({}, '', newUrl);
-    }, [view, agency, selectedRoutes, activeStop, selectedVehicleId, vehicles, loading]);
+    }, [agency, selectedRoutes, activeStop, selectedVehicleId, vehicles, loading]);
 
     // Reset selection on agency switch
     const prevAgencyRef = useRef(agency);
@@ -224,9 +203,9 @@ export default function AppV2() {
         }
     }, [agency]);
 
-    // Live vehicles poller
+    // Live vehicles poller (pure real-time from Trafiklab)
     useEffect(() => {
-        if (loading || view !== 'live') return;
+        if (loading) return;
         const fetchData = async () => {
             const v = await slService.getLiveVehicles(agency);
             setVehicles(v);
@@ -234,63 +213,60 @@ export default function AppV2() {
         fetchData();
         const interval = setInterval(fetchData, 3000);
         return () => clearInterval(interval);
-    }, [loading, agency, view]);
+    }, [loading, agency]);
 
-    // Live history & tripEvents poller for selected vehicle
-    const activeVehicleIdRef = useRef<string | null>(null);
+    // Route auto-loader for selected vehicle
     useEffect(() => {
-        if (view !== 'live') return;
         if (selectedVehicleId) {
             const v = vehicles.find(x => x.id === selectedVehicleId);
-            if (v && v.tripId) {
-                if (activeVehicleIdRef.current !== v.id) {
-                    setHistory([]);
-                    setTripEvents([]);
-                    activeVehicleIdRef.current = v.id;
-                }
-
-                currentTripIdRef.current = v.tripId;
-                const now = Date.now();
-
-                if (activeTripIdRef.current !== v.tripId || now - lastHistoryFetchRef.current >= 5000) {
-                    const isNewTrip = activeTripIdRef.current !== v.tripId;
-                    activeTripIdRef.current = v.tripId;
-                    lastHistoryFetchRef.current = now;
-
-                    Promise.all([
-                        slService.getVehicleHistory(v.tripId),
-                        slService.getTripEvents(v.tripId)
-                    ]).then(([h, events]) => {
-                        if (currentTripIdRef.current === v.tripId) {
-                            setHistory(prev => {
-                                if (!isNewTrip && prev.length > 0 && h.length === 0) return prev;
-                                return h;
-                            });
-                            setTripEvents(prev => {
-                                if (!isNewTrip && prev.length > 0 && events.length === 0) return prev;
-                                return events;
-                            });
-                        }
-                    });
-                }
-
-                if (v.line && !selectedRoutes.some(r => r.id === v.line)) {
-                    slService.getLineRoute(v.line).then((r: any) => {
-                        if (currentTripIdRef.current === v.tripId && r) {
-                            setSelectedRoutes(prev => prev.some(pr => pr.id === r.id) ? prev : [...prev, r]);
-                        }
-                    });
-                }
+            if (v && v.line && !selectedRoutes.some(r => r.id === v.line)) {
+                slService.getLineRoute(v.line).then((r: any) => {
+                    if (r) {
+                        setSelectedRoutes(prev => prev.some(pr => pr.id === r.id) ? prev : [...prev, r]);
+                    }
+                });
             }
-        } else {
-            activeVehicleIdRef.current = null;
-            currentTripIdRef.current = null;
-            activeTripIdRef.current = null;
-            lastHistoryFetchRef.current = 0;
+        }
+    }, [selectedVehicleId, vehicles, selectedRoutes]);
+
+    // Poll vehicle trail and stop events for currently selected vehicle
+    useEffect(() => {
+        if (!selectedVehicleId) {
             setHistory([]);
             setTripEvents([]);
+            activeTripIdRef.current = null;
+            return;
         }
-    }, [selectedVehicleId, vehicles, view]);
+
+        const vehicle = vehicles.find(x => x.id === selectedVehicleId);
+        if (!vehicle || !vehicle.tripId) return;
+
+        const tripId = vehicle.tripId;
+        activeTripIdRef.current = tripId;
+
+        let isMounted = true;
+        const fetchTrailAndEvents = async () => {
+            try {
+                const [hist, events] = await Promise.all([
+                    slService.getVehicleHistory(tripId),
+                    slService.getTripEvents(tripId)
+                ]);
+                if (isMounted) {
+                    setHistory(hist);
+                    setTripEvents(events);
+                }
+            } catch (err) {
+                console.warn("Kunde inte hämta spår/händelser för vald buss:", err);
+            }
+        };
+
+        fetchTrailAndEvents();
+        const interval = setInterval(fetchTrailAndEvents, 3500);
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [selectedVehicleId, vehicles]);
 
     // Calculated stop passages
     const stopPassages = useMemo(() => {
@@ -420,16 +396,17 @@ export default function AppV2() {
         return passages;
     }, [history, selectedRoutes, selectedVehicleId, tripEvents]);
 
-    // Helper to get default map config
+    // Helper to get default map config (restores panning to overview)
     const getDefaultMapConfig = useCallback(() => ({
         center: (agency === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686]) as [number, number],
-        zoom: agency === 'WAAB' ? 10 : 12
+        zoom: agency === 'WAAB' ? 10 : 12,
+        bounds: undefined,
+        timestamp: Date.now()
     }), [agency]);
 
     // Handler: Select a line from search
     const handleSelectRoute = async (routeId: string) => {
         setSelectedVehicleId(null);
-        setHistory([]);
         if (selectedRoutes.some(r => r.id === routeId)) return;
 
         const r = await slService.getLineRoute(routeId);
@@ -438,7 +415,7 @@ export default function AppV2() {
             setSelectedRoutes(newRoutes);
             setActiveStop(null);
             const b = L.latLngBounds(newRoutes.flatMap(route => route.path));
-            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b, timestamp: Date.now() });
         }
     };
 
@@ -446,7 +423,7 @@ export default function AppV2() {
     const handleSelectStop = (stop: SLStop) => {
         setIsFollowingVehicle(false);
         setActiveStop(stop);
-        setMapConfig({ center: [stop.lat, stop.lng], zoom: 16 });
+        setMapConfig({ center: [stop.lat, stop.lng], zoom: 16, bounds: undefined, timestamp: Date.now() });
     };
 
     // Handler: Deselect / remove active stop search (restores panning, preserves vehicle!)
@@ -456,13 +433,13 @@ export default function AppV2() {
             const v = vehicles.find(veh => veh.id === selectedVehicleId);
             if (v) {
                 setIsFollowingVehicle(true);
-                setMapConfig({ center: [v.lat, v.lng], zoom: 14 });
+                setMapConfig({ center: [v.lat, v.lng], zoom: 14, bounds: undefined, timestamp: Date.now() });
                 return;
             }
         }
         if (selectedRoutes.length > 0) {
             const b = L.latLngBounds(selectedRoutes.flatMap(route => route.path));
-            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b, timestamp: Date.now() });
         } else {
             setMapConfig(getDefaultMapConfig());
         }
@@ -471,17 +448,16 @@ export default function AppV2() {
     // Handler: Select a vehicle (e.g. from 4-digit search or map click)
     const handleSelectVehicle = async (v: SLVehicle, routeId: string) => {
         setSelectedVehicleId(null);
-        setHistory([]);
 
         if (!selectedRoutes.some(r => r.id === routeId)) {
             const r = await slService.getLineRoute(routeId);
             if (r) {
                 setSelectedRoutes(prev => [...prev, r]);
                 const b = L.latLngBounds(r.path);
-                setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+                setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b, timestamp: Date.now() });
             }
         } else {
-            setMapConfig({ center: [v.lat, v.lng], zoom: 14 });
+            setMapConfig({ center: [v.lat, v.lng], zoom: 14, bounds: undefined, timestamp: Date.now() });
         }
 
         setTimeout(() => setSelectedVehicleId(v.id), 50);
@@ -494,13 +470,11 @@ export default function AppV2() {
         if (updated.length === 0) {
             setSelectedVehicleId(null);
             setActiveStop(null);
-            setHistory([]);
-            setTripEvents([]);
             activeTripIdRef.current = null;
             setMapConfig(getDefaultMapConfig());
         } else {
             const b = L.latLngBounds(updated.flatMap(route => route.path));
-            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b, timestamp: Date.now() });
         }
     };
 
@@ -509,22 +483,20 @@ export default function AppV2() {
         setSelectedRoutes([]);
         setSelectedVehicleId(null);
         setActiveStop(null);
-        setHistory([]);
-        setTripEvents([]);
         activeTripIdRef.current = null;
         setMapConfig(getDefaultMapConfig());
     };
 
-    // Map click handler: Deselecting active stop or vehicle
+    // Map click handler: Deselecting active stop or vehicle (restores panning)
     const handleMapClick = () => {
         if (activeStop) {
-            // If a stop was active, clicking map deselects the stop, restores panning, and DOES NOT drop vehicle!
+            // If a stop was active, clicking map deselects the stop and restores panning
             handleRemoveStop();
         } else if (selectedVehicleId) {
             setSelectedVehicleId(null);
             if (selectedRoutes.length > 0) {
                 const b = L.latLngBounds(selectedRoutes.flatMap(route => route.path));
-                setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+                setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b, timestamp: Date.now() });
             } else {
                 setMapConfig(getDefaultMapConfig());
             }
@@ -551,8 +523,6 @@ export default function AppV2() {
             <NavbarV2
                 agency={agency}
                 onAgencyChange={setAgency}
-                view={view}
-                onViewChange={setView}
                 showAll={showAll}
                 onToggleShowAll={setShowAll}
                 mapStyle={mapStyle}
@@ -567,65 +537,57 @@ export default function AppV2() {
                 lastUpdated={lastUpdated}
             />
 
-            {view === 'live' ? (
-                <>
-                    {/* Selected line chips bar directly below navbar */}
-                    <LineChipsBar
-                        selectedRoutes={selectedRoutes}
-                        onRemoveRoute={handleRemoveRoute}
-                        onClearAll={handleClearAll}
-                        vehicles={vehicles}
-                        activeStop={activeStop}
-                        onRemoveStop={handleRemoveStop}
-                    />
+            {/* Selected line chips bar directly below navbar */}
+            <LineChipsBar
+                selectedRoutes={selectedRoutes}
+                onRemoveRoute={handleRemoveRoute}
+                onClearAll={handleClearAll}
+                vehicles={vehicles}
+                activeStop={activeStop}
+                onRemoveStop={handleRemoveStop}
+            />
 
-                    {/* Docked Left Sidebar for Vehicle & Driven Stops */}
-                    {selectedVehicleObj && (
-                        <VehicleSidebar
-                            vehicle={selectedVehicleObj}
-                            lineShortName={routeManifest.get(selectedVehicleObj.line || '')?.line || '?'}
-                            tripEvents={tripEvents}
-                            onClose={() => {
-                                setSelectedVehicleId(null);
-                                if (selectedRoutes.length > 0) {
-                                    const b = L.latLngBounds(selectedRoutes.flatMap(route => route.path));
-                                    setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
-                                } else if (!activeStop) {
-                                    setMapConfig(getDefaultMapConfig());
-                                }
-                            }}
-                            selectedRoutes={selectedRoutes}
-                            isFollowingVehicle={isFollowingVehicle}
-                            onToggleFollow={() => setIsFollowingVehicle(prev => !prev)}
-                        />
-                    )}
-
-                    {/* Interactive Live Map */}
-                    <div className="flex-1 w-full h-full pt-14">
-                        <LiveMap
-                            mapStyle={mapStyle}
-                            vehicles={vehicles}
-                            showAll={showAll}
-                            selectedRoutes={selectedRoutes}
-                            selectedVehicleId={selectedVehicleId}
-                            setSelectedVehicleId={setSelectedVehicleId}
-                            routeManifest={routeManifest}
-                            mapConfig={mapConfig}
-                            activeStop={activeStop}
-                            setActiveStop={setActiveStop}
-                            stopPassages={stopPassages}
-                            history={history}
-                            tripEvents={tripEvents}
-                            isFollowingVehicle={isFollowingVehicle}
-                            onMapClick={handleMapClick}
-                        />
-                    </div>
-                </>
-            ) : (
-                <div className="flex-1 w-full h-full pt-14 overflow-y-auto">
-                    <HistoryView />
-                </div>
+            {/* Docked Left Sidebar for Vehicle & Driven Stops */}
+            {selectedVehicleObj && (
+                <VehicleSidebar
+                    vehicle={selectedVehicleObj}
+                    lineShortName={routeManifest.get(selectedVehicleObj.line || '')?.line || '?'}
+                    tripEvents={tripEvents}
+                    onClose={() => {
+                        setSelectedVehicleId(null);
+                        if (selectedRoutes.length > 0) {
+                            const b = L.latLngBounds(selectedRoutes.flatMap(route => route.path));
+                            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+                        } else if (!activeStop) {
+                            setMapConfig(getDefaultMapConfig());
+                        }
+                    }}
+                    selectedRoutes={selectedRoutes}
+                    isFollowingVehicle={isFollowingVehicle}
+                    onToggleFollow={() => setIsFollowingVehicle(prev => !prev)}
+                />
             )}
+
+            {/* Interactive Live Map */}
+            <div className="flex-1 w-full h-full pt-14">
+                <LiveMap
+                    mapStyle={mapStyle}
+                    vehicles={vehicles}
+                    showAll={showAll}
+                    selectedRoutes={selectedRoutes}
+                    selectedVehicleId={selectedVehicleId}
+                    setSelectedVehicleId={setSelectedVehicleId}
+                    routeManifest={routeManifest}
+                    mapConfig={mapConfig}
+                    activeStop={activeStop}
+                    setActiveStop={setActiveStop}
+                    stopPassages={stopPassages}
+                    history={history}
+                    tripEvents={tripEvents}
+                    isFollowingVehicle={isFollowingVehicle}
+                    onMapClick={handleMapClick}
+                />
+            </div>
         </div>
     );
 }

@@ -414,17 +414,29 @@ class SLService {
   }
 
   async getVehicleHistory(tripId: string): Promise<HistoryPoint[]> {
-    const res = await fetch(`/api/trip-history?tripId=${tripId}&t=${Date.now()}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.path || [];
+    try {
+      const res = await fetch(`/api/trip-history?tripId=${encodeURIComponent(tripId)}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.path || [];
+      }
+    } catch (e) {
+      console.warn("Kunde inte hämta fordonshistorik:", e);
+    }
+    return [];
   }
 
   async getTripEvents(tripId: string, date?: string): Promise<any[]> {
-    const url = date ? `/api/trip-events?tripId=${tripId}&date=${date}&t=${Date.now()}` : `/api/trip-events?tripId=${tripId}&t=${Date.now()}`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    return await res.json();
+    try {
+      const dateParam = date ? `&date=${encodeURIComponent(date)}` : '';
+      const res = await fetch(`/api/trip-events?tripId=${encodeURIComponent(tripId)}${dateParam}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn("Kunde inte hämta händelser för turen:", e);
+    }
+    return [];
   }
 
   async getLastUpdated(): Promise<Date | null> {

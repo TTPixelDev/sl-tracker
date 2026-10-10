@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import apiApp from "./api/index.ts";
+import { startIngest } from "./scripts/ingest-rt.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,9 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  // Start real-time ingest for current running buses (today's trips with 4h TTL)
+  startIngest().catch((err) => console.error("Ingest start failed:", err));
 
   app.use(apiApp);
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { RefreshCw, Map as MapIcon, History as HistoryIcon, Trash2, X, Sparkles } from 'lucide-react';
+import { RefreshCw, Map as MapIcon, Trash2, X, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { slService } from '../services/slService';
 import { SLVehicle, SLLineRoute, SLStop, HistoryPoint } from '../types';
@@ -7,7 +7,6 @@ import LiveMap from '../components/LiveMap';
 import { getLineColor, getTransportIcon } from '../utils/mapUtils';
 import SearchBar from '../components/SearchBar';
 import VehicleSearch from '../components/VehicleSearch';
-import HistoryView from '../components/HistoryView';
 import LiveVehicleStatus from '../components/LiveVehicleStatus';
 import L from 'leaflet';
 import clsx from 'clsx';
@@ -18,11 +17,6 @@ function cn(...inputs: any[]) {
 }
 
 export default function AppV1() {
-    const [view, setView] = useState<'live' | 'history'>(() => {
-        const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-        const v = params.get('view');
-        return v === 'history' ? 'history' : 'live';
-    });
     const [loading, setLoading] = useState(true);
     const [mapStyle, setMapStyle] = useState<'standard' | 'minimal'>(() => {
         try {
@@ -139,71 +133,58 @@ export default function AppV1() {
     // Update document.title
     useEffect(() => {
         let newTitle = 'SL-Tracker (v1)';
-        if (view === 'live') {
-            if (selectedRoutes.length > 0 && selectedVehicleId) {
-                const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
-                const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
-                const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                newTitle = `SL-Tracker v1 - Linje ${linesStr} Vagn ${vId}`;
-            } else if (selectedRoutes.length > 0) {
-                const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
-                newTitle = `SL-Tracker v1 - Linje ${linesStr}`;
-            } else if (selectedVehicleId) {
-                const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
-                const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                newTitle = `SL-Tracker v1 - Vagn ${vId}`;
-            }
-        } else {
-            const params = new URLSearchParams(window.location.search);
-            const hLine = params.get('hLine');
-            const hStop = params.get('hStop');
-            if (hLine && hStop) {
-                newTitle = `SL-Tracker v1 - Linje ${hLine} ${hStop}`;
-            } else if (hLine) {
-                newTitle = `SL-Tracker v1 - Linje ${hLine}`;
-            }
+        if (selectedRoutes.length > 0 && selectedVehicleId) {
+            const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
+            const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+            const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
+            newTitle = `SL-Tracker v1 - Linje ${linesStr} Vagn ${vId}`;
+        } else if (selectedRoutes.length > 0) {
+            const linesStr = selectedRoutes.map(r => r.line || r.id).join(', ');
+            newTitle = `SL-Tracker v1 - Linje ${linesStr}`;
+        } else if (selectedVehicleId) {
+            const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+            const vId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
+            newTitle = `SL-Tracker v1 - Vagn ${vId}`;
         }
         document.title = newTitle;
-    }, [view, selectedRoutes, selectedVehicleId, vehicles]);
+    }, [selectedRoutes, selectedVehicleId, vehicles]);
 
     // Sync state changes to browser URL query parameters
     useEffect(() => {
         if (loading) return;
         const params = new URLSearchParams(window.location.search);
 
-        params.set('view', view);
         params.set('agency', agency);
 
-        if (view === 'live') {
-            if (selectedRoutes.length > 0) {
-                params.set('lines', selectedRoutes.map(r => r.line || r.id).join(','));
-            } else {
-                params.delete('lines');
-            }
-
-            if (activeStop) {
-                params.set('stop', activeStop.id);
-            } else {
-                params.delete('stop');
-            }
-
-            if (selectedVehicleId) {
-                const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
-                const displayVehicleId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
-                params.set('vehicle', displayVehicleId);
-            } else {
-                params.delete('vehicle');
-            }
-
-            params.delete('hDate');
-            params.delete('hTime');
-            params.delete('hLine');
-            params.delete('hStop');
+        if (selectedRoutes.length > 0) {
+            params.set('lines', selectedRoutes.map(r => r.line || r.id).join(','));
+        } else {
+            params.delete('lines');
         }
+
+        if (activeStop) {
+            params.set('stop', activeStop.id);
+        } else {
+            params.delete('stop');
+        }
+
+        if (selectedVehicleId) {
+            const matchedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+            const displayVehicleId = matchedVehicle ? matchedVehicle.vehicleNumber : selectedVehicleId;
+            params.set('vehicle', displayVehicleId);
+        } else {
+            params.delete('vehicle');
+        }
+
+        params.delete('view');
+        params.delete('hDate');
+        params.delete('hTime');
+        params.delete('hLine');
+        params.delete('hStop');
 
         const newUrl = `${window.location.pathname}?${params.toString()}`;
         window.history.replaceState({}, '', newUrl);
-    }, [view, agency, selectedRoutes, activeStop, selectedVehicleId, vehicles, loading]);
+    }, [agency, selectedRoutes, activeStop, selectedVehicleId, vehicles, loading]);
 
     const prevAgencyRef = useRef(agency);
     useEffect(() => {
@@ -218,7 +199,7 @@ export default function AppV1() {
     }, [agency]);
 
     useEffect(() => {
-        if (loading || view !== 'live') return;
+        if (loading) return;
         const fetchData = async () => {
             const v = await slService.getLiveVehicles(agency);
             setVehicles(v);
@@ -226,64 +207,59 @@ export default function AppV1() {
         fetchData();
         const i = setInterval(fetchData, 3000);
         return () => clearInterval(i);
-    }, [loading, agency, view]);
-
-    const activeVehicleIdRef = useRef<string | null>(null);
+    }, [loading, agency]);
 
     useEffect(() => {
-        if (view !== 'live') return;
         if (selectedVehicleId) {
             const v = vehicles.find(x => x.id === selectedVehicleId);
-            if (v && v.tripId) {
-                if (activeVehicleIdRef.current !== v.id) {
-                    setHistory([]);
-                    setTripEvents([]);
-                    activeVehicleIdRef.current = v.id;
-                }
-
-                currentTripIdRef.current = v.tripId;
-                const now = Date.now();
-
-                if (activeTripIdRef.current !== v.tripId || now - lastHistoryFetchRef.current >= 5000) {
-                    const isNewTrip = activeTripIdRef.current !== v.tripId;
-
-                    activeTripIdRef.current = v.tripId;
-                    lastHistoryFetchRef.current = now;
-
-                    Promise.all([
-                        slService.getVehicleHistory(v.tripId),
-                        slService.getTripEvents(v.tripId)
-                    ]).then(([h, events]) => {
-                        if (currentTripIdRef.current === v.tripId) {
-                            setHistory(prev => {
-                                if (!isNewTrip && prev.length > 0 && h.length === 0) return prev;
-                                return h;
-                            });
-                            setTripEvents(prev => {
-                                if (!isNewTrip && prev.length > 0 && events.length === 0) return prev;
-                                return events;
-                            });
-                        }
-                    });
-                }
-
-                if (v.line && !selectedRoutes.some(r => r.id === v.line)) {
-                    slService.getLineRoute(v.line).then((r: any) => {
-                        if (currentTripIdRef.current === v.tripId && r) {
-                            setSelectedRoutes(prev => prev.some(pr => pr.id === r.id) ? prev : [...prev, r]);
-                        }
-                    });
-                }
+            if (v && v.line && !selectedRoutes.some(r => r.id === v.line)) {
+                slService.getLineRoute(v.line).then((r: any) => {
+                    if (r) {
+                        setSelectedRoutes(prev => prev.some(pr => pr.id === r.id) ? prev : [...prev, r]);
+                    }
+                });
             }
-        } else {
-            activeVehicleIdRef.current = null;
-            currentTripIdRef.current = null;
-            activeTripIdRef.current = null;
-            lastHistoryFetchRef.current = 0;
+        }
+    }, [selectedVehicleId, vehicles, selectedRoutes]);
+
+    // Poll vehicle trail and stop events for currently selected vehicle
+    useEffect(() => {
+        if (!selectedVehicleId) {
             setHistory([]);
             setTripEvents([]);
+            activeTripIdRef.current = null;
+            return;
         }
-    }, [selectedVehicleId, vehicles, view]);
+
+        const vehicle = vehicles.find(x => x.id === selectedVehicleId);
+        if (!vehicle || !vehicle.tripId) return;
+
+        const tripId = vehicle.tripId;
+        activeTripIdRef.current = tripId;
+
+        let isMounted = true;
+        const fetchTrailAndEvents = async () => {
+            try {
+                const [hist, events] = await Promise.all([
+                    slService.getVehicleHistory(tripId),
+                    slService.getTripEvents(tripId)
+                ]);
+                if (isMounted) {
+                    setHistory(hist);
+                    setTripEvents(events);
+                }
+            } catch (err) {
+                console.warn("Kunde inte hämta spår/händelser för vald buss (v1):", err);
+            }
+        };
+
+        fetchTrailAndEvents();
+        const interval = setInterval(fetchTrailAndEvents, 3500);
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [selectedVehicleId, vehicles]);
 
     const stopPassages = useMemo(() => {
         if (!selectedVehicleId || selectedRoutes.length === 0 || (history.length === 0 && (!tripEvents || tripEvents.length === 0))) return new Map();
@@ -427,7 +403,9 @@ export default function AppV1() {
         activeTripIdRef.current = null;
         setMapConfig({
             center: agency === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686],
-            zoom: agency === 'WAAB' ? 10 : 12
+            zoom: agency === 'WAAB' ? 10 : 12,
+            bounds: undefined,
+            timestamp: Date.now()
         });
     };
 
@@ -442,11 +420,13 @@ export default function AppV1() {
             activeTripIdRef.current = null;
             setMapConfig({
                 center: agency === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686],
-                zoom: agency === 'WAAB' ? 10 : 12
+                zoom: agency === 'WAAB' ? 10 : 12,
+                bounds: undefined,
+                timestamp: Date.now()
             });
         } else {
             const b = L.latLngBounds(updated.flatMap(route => route.path));
-            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b, timestamp: Date.now() });
         }
     };
 
@@ -459,14 +439,14 @@ export default function AppV1() {
                 const newRoutes = [...selectedRoutes, r];
                 setSelectedRoutes(newRoutes); setActiveStop(null);
                 const b = L.latLngBounds(newRoutes.flatMap(route => route.path));
-                setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+                setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b, timestamp: Date.now() });
             }
         } else {
             setIsFollowingVehicle(false);
             const s = await slService.getStopInfo(res.id);
             if (s) {
                 setActiveStop(s);
-                setMapConfig({ center: [s.lat, s.lng], zoom: 16 });
+                setMapConfig({ center: [s.lat, s.lng], zoom: 16, bounds: undefined, timestamp: Date.now() });
             }
         }
     };
@@ -486,175 +466,151 @@ export default function AppV1() {
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Gå till v2</span>
                 </Link>
+            </div>
+            <div className="absolute top-6 left-6 right-6 z-[2000] pointer-events-none flex flex-col items-start gap-2">
+                <div className="w-full max-w-sm pointer-events-auto">
+                    <SearchBar
+                        onSelect={handleSelect}
+                        onClear={handleClear}
+                        activeRoute={null}
+                        selectedRoutes={selectedRoutes}
+                        searchQuery={searchQuery}
+                        onSearchChange={setSearchQuery}
+                        currentAgency={agency}
+                        stopPassages={stopPassages}
+                    />
+                </div>
 
-                <div className="bg-slate-900/90 backdrop-blur-xl p-2 rounded-2xl flex border border-white/10 shadow-2xl">
-                    <div className="bg-slate-800/50 p-1 rounded-xl flex border border-white/5">
-                        <button
-                            onClick={() => setView('live')}
-                            className={cn("flex flex-1 items-center justify-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all", view === 'live' ? 'bg-[#3b82f6] text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:text-white')}
-                        >
-                            <MapIcon className="w-4 h-4" /> Live
-                        </button>
-                        <button
-                            onClick={() => setView('history')}
-                            className={cn("flex flex-1 items-center justify-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all", view === 'history' ? 'bg-[#3b82f6] text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:text-white')}
-                        >
-                            <HistoryIcon className="w-4 h-4" /> Historik
+                {selectedRoutes.length > 0 && (
+                    <div className="flex flex-wrap justify-start gap-2 pointer-events-auto max-w-3xl mt-1">
+                        {selectedRoutes.map(route => {
+                            const lineColorHex = getLineColor(route.line, route.agency);
+                            const TransportIcon = getTransportIcon(route.line, route.agency);
+
+                            const firstStop = route.stops && route.stops.length > 0 ? route.stops[0].name : '';
+                            const lastStop = route.stops && route.stops.length > 0 ? route.stops[route.stops.length - 1].name : '';
+
+                            const routeVehicles = vehicles.filter((v: any) => v.line === route.line);
+                            const contractor = slService.getLineContractorSync(route.line);
+                            let operator = "OKÄND";
+
+                            if (route.agency === 'WAAB') operator = 'WAXHOLMSBOLAGET';
+                            else if (contractor) operator = contractor.toUpperCase();
+                            else operator = routeVehicles.length > 0 ? routeVehicles[0].operator.toUpperCase() : 'NOBINA';
+
+                            return (
+                                <div key={route.id} className="flex items-center bg-[#2b3343] text-white rounded-xl shadow-lg border border-[#3b4455] group h-[44px]">
+                                    <div className="flex items-center gap-2 pl-3 pr-3">
+                                        <TransportIcon className="w-[18px] h-[18px] shrink-0" style={{ color: lineColorHex }} />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-[13px] font-bold whitespace-nowrap leading-tight">Linje {route.line}</span>
+                                            <span className="text-[9px] font-bold tracking-wider text-slate-400 leading-none uppercase mt-0.5">{operator}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col min-w-0 pl-3 py-1 pr-1 border-l border-[#3b4455] h-full justify-center gap-0.5">
+                                        <span className="text-[10px] text-slate-300 leading-none truncate w-24">{(firstStop || '').replace(/\s*\(.*\)/, '')}</span>
+                                        <span className="text-[10px] text-slate-300 leading-none truncate w-24">{(lastStop || '').replace(/\s*\(.*\)/, '')}</span>
+                                    </div>
+                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveRoute(route.id); }} className="px-3 hover:bg-white/10 h-full rounded-r-xl transition-colors flex items-center justify-center">
+                                        <X className="w-[14px] h-[14px] text-slate-400 group-hover:text-white" />
+                                    </button>
+                                </div>
+                            );
+                        })}
+                        <button onClick={handleClear} className="flex items-center gap-2 bg-[#4a5568] hover:bg-[#3f4859] text-white px-3 py-1.5 h-[44px] rounded-xl shadow-lg border border-[#5a677d] transition-all text-[13px] font-semibold active:scale-95 group">
+                            <Trash2 className="w-[14px] h-[14px]" /> <span>Rensa alla</span>
                         </button>
                     </div>
+                )}
+            </div>
+
+            <div className="absolute bottom-6 left-6 right-6 z-[1000] flex flex-col sm:flex-row justify-between items-end gap-4 pointer-events-none">
+                <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 pointer-events-auto w-full sm:w-[280px] max-h-[70vh] flex flex-col overflow-hidden">
+                    {selectedVehicleId && vehicles.some(v => v.id === selectedVehicleId) ? (
+                        <LiveVehicleStatus
+                            vehicle={vehicles.find(v => v.id === selectedVehicleId)!}
+                            lineShortName={routeManifest.get(vehicles.find(v => v.id === selectedVehicleId)?.line || '')?.line || '?'}
+                            tripEvents={tripEvents}
+                            onClose={() => setSelectedVehicleId(null)}
+                            selectedRoutes={selectedRoutes}
+                            isFollowingVehicle={isFollowingVehicle}
+                            onToggleFollow={() => setIsFollowingVehicle(prev => !prev)}
+                        />
+                    ) : (
+                        <div className="p-3">
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-3 flex items-center justify-between border-b border-white/5 pb-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /> Live Status
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-4 px-1 py-0.5">
+                                <span className="text-xs text-slate-300 font-bold">{selectedRoutes.length > 0 ? `Fordon på valda linjer` : 'Fordon i trafik'}</span>
+                                <span className="text-xs text-white font-bold bg-slate-800/50 px-2.5 py-1.5 rounded-xl border border-white/5 shadow-inner">
+                                    {selectedRoutes.length > 0 ? vehicles.filter(v => selectedRoutes.some(r => r.id === v.line)).length : vehicles.length}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="p-3 border-t border-white/5 space-y-3 shrink-0 bg-slate-900/40">
+                        <div className="flex items-center justify-between gap-8 px-1">
+                            <span className="text-xs text-slate-300 font-bold">Visa all trafik</span>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="sr-only peer" />
+                                <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 border border-white/5 shadow-inner"></div>
+                            </label>
+                        </div>
+                        <div className="flex items-center justify-between gap-8 pt-3 border-t border-white/5 px-1">
+                            <span className="text-xs text-slate-300 font-bold">Detaljerad karta</span>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" checked={mapStyle === 'standard'} onChange={e => setMapStyle(e.target.checked ? 'standard' : 'minimal')} className="sr-only peer" />
+                                <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 border border-white/5 shadow-inner"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="pointer-events-auto w-full sm:w-auto">
+                    <VehicleSearch
+                        currentAgency={agency}
+                        onAgencyChange={(a) => {
+                            setAgency(a);
+                            setMapConfig({ center: a === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686], zoom: a === 'WAAB' ? 10 : 12 });
+                        }}
+                        onVehicleFound={async (v, routeId) => {
+                            setSelectedVehicleId(null);
+                            setHistory([]);
+                            if (!selectedRoutes.some(r => r.id === routeId)) {
+                                const r = await slService.getLineRoute(routeId);
+                                if (r) {
+                                    setSelectedRoutes(prev => [...prev, r]);
+                                    const b = L.latLngBounds(r.path);
+                                    setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
+                                }
+                            }
+                            setTimeout(() => setSelectedVehicleId(v.id), 50);
+                        }}
+                        lastUpdated={lastUpdated}
+                    />
                 </div>
             </div>
 
-            {view === 'live' ? (
-                <>
-                    <div className="absolute top-6 left-6 right-6 z-[2000] pointer-events-none flex flex-col items-start gap-2">
-                        <div className="w-full max-w-sm pointer-events-auto">
-                            <SearchBar
-                                onSelect={handleSelect}
-                                onClear={handleClear}
-                                activeRoute={null}
-                                selectedRoutes={selectedRoutes}
-                                searchQuery={searchQuery}
-                                onSearchChange={setSearchQuery}
-                                currentAgency={agency}
-                                stopPassages={stopPassages}
-                            />
-                        </div>
-
-                        {selectedRoutes.length > 0 && (
-                            <div className="flex flex-wrap justify-start gap-2 pointer-events-auto max-w-3xl mt-1">
-                                {selectedRoutes.map(route => {
-                                    const lineColorHex = getLineColor(route.line, route.agency);
-                                    const TransportIcon = getTransportIcon(route.line, route.agency);
-
-                                    const firstStop = route.stops && route.stops.length > 0 ? route.stops[0].name : '';
-                                    const lastStop = route.stops && route.stops.length > 0 ? route.stops[route.stops.length - 1].name : '';
-
-                                    const routeVehicles = vehicles.filter((v: any) => v.line === route.line);
-                                    const contractor = slService.getLineContractorSync(route.line);
-                                    let operator = "OKÄND";
-
-                                    if (route.agency === 'WAAB') operator = 'WAXHOLMSBOLAGET';
-                                    else if (contractor) operator = contractor.toUpperCase();
-                                    else operator = routeVehicles.length > 0 ? routeVehicles[0].operator.toUpperCase() : 'NOBINA';
-
-                                    return (
-                                        <div key={route.id} className="flex items-center bg-[#2b3343] text-white rounded-xl shadow-lg border border-[#3b4455] group h-[44px]">
-                                            <div className="flex items-center gap-2 pl-3 pr-3">
-                                                <TransportIcon className="w-[18px] h-[18px] shrink-0" style={{ color: lineColorHex }} />
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className="text-[13px] font-bold whitespace-nowrap leading-tight">Linje {route.line}</span>
-                                                    <span className="text-[9px] font-bold tracking-wider text-slate-400 leading-none uppercase mt-0.5">{operator}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col min-w-0 pl-3 py-1 pr-1 border-l border-[#3b4455] h-full justify-center gap-0.5">
-                                                <span className="text-[10px] text-slate-300 leading-none truncate w-24">{(firstStop || '').replace(/\s*\(.*\)/, '')}</span>
-                                                <span className="text-[10px] text-slate-300 leading-none truncate w-24">{(lastStop || '').replace(/\s*\(.*\)/, '')}</span>
-                                            </div>
-                                            <button onClick={(e) => { e.stopPropagation(); handleRemoveRoute(route.id); }} className="px-3 hover:bg-white/10 h-full rounded-r-xl transition-colors flex items-center justify-center">
-                                                <X className="w-[14px] h-[14px] text-slate-400 group-hover:text-white" />
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                                <button onClick={handleClear} className="flex items-center gap-2 bg-[#4a5568] hover:bg-[#3f4859] text-white px-3 py-1.5 h-[44px] rounded-xl shadow-lg border border-[#5a677d] transition-all text-[13px] font-semibold active:scale-95 group">
-                                    <Trash2 className="w-[14px] h-[14px]" /> <span>Rensa alla</span>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="absolute bottom-6 left-6 right-6 z-[1000] flex flex-col sm:flex-row justify-between items-end gap-4 pointer-events-none">
-                        <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 pointer-events-auto w-full sm:w-[280px] max-h-[70vh] flex flex-col overflow-hidden">
-                            {selectedVehicleId && vehicles.some(v => v.id === selectedVehicleId) ? (
-                                <LiveVehicleStatus
-                                    vehicle={vehicles.find(v => v.id === selectedVehicleId)!}
-                                    lineShortName={routeManifest.get(vehicles.find(v => v.id === selectedVehicleId)?.line || '')?.line || '?'}
-                                    tripEvents={tripEvents}
-                                    onClose={() => setSelectedVehicleId(null)}
-                                    selectedRoutes={selectedRoutes}
-                                    isFollowingVehicle={isFollowingVehicle}
-                                    onToggleFollow={() => setIsFollowingVehicle(prev => !prev)}
-                                />
-                            ) : (
-                                <div className="p-3">
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-3 flex items-center justify-between border-b border-white/5 pb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /> Live Status
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-4 px-1 py-0.5">
-                                        <span className="text-xs text-slate-300 font-bold">{selectedRoutes.length > 0 ? `Fordon på valda linjer` : 'Fordon i trafik'}</span>
-                                        <span className="text-xs text-white font-bold bg-slate-800/50 px-2.5 py-1.5 rounded-xl border border-white/5 shadow-inner">
-                                            {selectedRoutes.length > 0 ? vehicles.filter(v => selectedRoutes.some(r => r.id === v.line)).length : vehicles.length}
-                                        </span>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="p-3 border-t border-white/5 space-y-3 shrink-0 bg-slate-900/40">
-                                <div className="flex items-center justify-between gap-8 px-1">
-                                    <span className="text-xs text-slate-300 font-bold">Visa all trafik</span>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="sr-only peer" />
-                                        <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 border border-white/5 shadow-inner"></div>
-                                    </label>
-                                </div>
-                                <div className="flex items-center justify-between gap-8 pt-3 border-t border-white/5 px-1">
-                                    <span className="text-xs text-slate-300 font-bold">Detaljerad karta</span>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" checked={mapStyle === 'standard'} onChange={e => setMapStyle(e.target.checked ? 'standard' : 'minimal')} className="sr-only peer" />
-                                        <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 border border-white/5 shadow-inner"></div>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="pointer-events-auto w-full sm:w-auto">
-                            <VehicleSearch
-                                currentAgency={agency}
-                                onAgencyChange={(a) => {
-                                    setAgency(a);
-                                    setMapConfig({ center: a === 'WAAB' ? [59.35, 18.65] : [59.3293, 18.0686], zoom: a === 'WAAB' ? 10 : 12 });
-                                }}
-                                onVehicleFound={async (v, routeId) => {
-                                    setSelectedVehicleId(null);
-                                    setHistory([]);
-                                    if (!selectedRoutes.some(r => r.id === routeId)) {
-                                        const r = await slService.getLineRoute(routeId);
-                                        if (r) {
-                                            setSelectedRoutes(prev => [...prev, r]);
-                                            const b = L.latLngBounds(r.path);
-                                            setMapConfig({ center: [b.getCenter().lat, b.getCenter().lng], zoom: 12, bounds: b });
-                                        }
-                                    }
-                                    setTimeout(() => setSelectedVehicleId(v.id), 50);
-                                }}
-                                lastUpdated={lastUpdated}
-                            />
-                        </div>
-                    </div>
-
-                    <LiveMap
-                        mapStyle={mapStyle}
-                        vehicles={vehicles}
-                        showAll={showAll}
-                        selectedRoutes={selectedRoutes}
-                        selectedVehicleId={selectedVehicleId}
-                        setSelectedVehicleId={setSelectedVehicleId}
-                        routeManifest={routeManifest}
-                        mapConfig={mapConfig}
-                        activeStop={activeStop}
-                        setActiveStop={setActiveStop}
-                        stopPassages={stopPassages}
-                        history={history}
-                        tripEvents={tripEvents}
-                        isFollowingVehicle={isFollowingVehicle}
-                    />
-                </>
-            ) : (
-                <HistoryView />
-            )}
+            <LiveMap
+                mapStyle={mapStyle}
+                vehicles={vehicles}
+                showAll={showAll}
+                selectedRoutes={selectedRoutes}
+                selectedVehicleId={selectedVehicleId}
+                setSelectedVehicleId={setSelectedVehicleId}
+                routeManifest={routeManifest}
+                mapConfig={mapConfig}
+                activeStop={activeStop}
+                setActiveStop={setActiveStop}
+                stopPassages={stopPassages}
+                history={history}
+                tripEvents={tripEvents}
+                isFollowingVehicle={isFollowingVehicle}
+            />
         </div>
     );
 }

@@ -189,17 +189,17 @@ const ActiveStopMarker = ({ activeStop, selectedRoutes, stopPassages, tripEvents
   );
 };
 
-const MapController = ({ center, zoom, bounds }: { center: [number, number]; zoom: number; bounds?: L.LatLngBoundsExpression }) => {
+const MapController = ({ center, zoom, bounds, timestamp }: { center: [number, number]; zoom: number; bounds?: L.LatLngBoundsExpression; timestamp?: number }) => {
   const map = useMap();
   useEffect(() => {
     try {
       if (bounds) {
-        map.fitBounds(bounds, { padding: [50, 50] });
+        map.fitBounds(bounds, { padding: [50, 50], animate: true });
       } else if (center && typeof center[0] === 'number' && typeof center[1] === 'number') {
-        map.setView(center, zoom);
+        map.flyTo(center, zoom, { duration: 0.6 });
       }
     } catch (e) { }
-  }, [center, zoom, bounds, map]);
+  }, [center?.[0], center?.[1], zoom, bounds, timestamp, map]);
   return null;
 };
 
@@ -257,7 +257,7 @@ export default function LiveMap({ mapStyle, vehicles, showAll, selectedRoutes, s
           : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
         maxZoom={19}
       />
-      <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} />
+      <MapController center={mapConfig.center} zoom={mapConfig.zoom} bounds={mapConfig.bounds} timestamp={mapConfig?.timestamp} />
       <SelectedVehicleTracker selectedVehicleId={selectedVehicleId} vehicles={vehicles} isFollowingVehicle={isFollowingVehicle} />
       <EventController onMapClick={onMapClick || (() => { setSelectedVehicleId(null); setActiveStop(null); })} />
 

@@ -1,392 +1,569 @@
-import { MongoClient, AnyBulkWriteOperation } from 'mongodb';
-import protobuf from 'protobufjs';
-import { getDistance } from 'geolib';
-import fs from 'fs';
-import path from 'path';
-import 'dotenv/config';
+import "dotenv/config";
+import path from "path";
+import fs from "fs";
+import { MongoClient } from "mongodb";
+import protobuf from "protobufjs";
 
-// --- Konfiguration ---
-const API_ENDPOINT = 'https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/VehiclePositionsSweden.pb';
-const INTERVAL_MS = 2000;
-const STOP_RADIUS = 30;
-const STOPPED_SPEED_THRESHOLD = 5;
-const TRAIL_EXPIRE_HOURS = 2;
-const HISTORY_EXPIRE_DAYS = 90;
+const DB_NAME = "sl-times";
+const DATA_DIR = path.resolve(process.cwd(), "public/data");
+const LINES_DIR = path.join(DATA_DIR, "lines");
 
-// Sökvägar för loggfiler
-const STATUS_FILE_PATH = process.env.STATUS_FILE_PATH || '/var/www/html/status.txt';
-const STATUS_JSON_PATH = process.env.STATUS_JSON_PATH || '/var/www/html/status.json';
+// 4 hours retention: documents are deleted after 4 hours to keep storage minimal and prevent costs
+const RETENTION_MS = 4 * 60 * 60 * 1000;
 
-const PROTO_DEF = `
-syntax = "proto2";
-package transit_realtime;
-message FeedMessage { required FeedHeader header = 1; repeated FeedEntity entity = 2; }
-message FeedHeader { required string gtfs_realtime_version = 1; optional Incrementality incrementality = 2 [default = FULL_DATASET]; optional uint64 timestamp = 3; enum Incrementality { FULL_DATASET = 0; DIFFERENTIAL = 1; } }
-message FeedEntity { required string id = 1; optional bool is_deleted = 2 [default = false]; optional TripUpdate trip_update = 3; optional VehiclePosition vehicle = 4; optional Alert alert = 5; }
-message VehiclePosition { optional TripDescriptor trip = 1; optional VehicleDescriptor vehicle = 8; optional Position position = 2; optional uint64 timestamp = 5; }
-message TripUpdate { optional TripDescriptor trip = 1; repeated StopTimeUpdate stop_time_update = 2; }
-message StopTimeUpdate { optional uint32 stop_sequence = 1; optional string stop_id = 4; optional StopTimeEvent arrival = 2; optional StopTimeEvent departure = 3; }
-message StopTimeEvent { optional int32 delay = 1; optional int64 time = 2; optional int32 uncertainty = 3; }
-message TripDescriptor { optional string trip_id = 1; optional string route_id = 5; optional uint32 direction_id = 6; }
-message VehicleDescriptor { optional string id = 1; optional string label = 2; optional string license_plate = 3; }
-message Position { required float latitude = 1; required float longitude = 2; optional float bearing = 3; optional float speed = 5; }
-message Alert {}
-`;
+interface TrailPoint {
+    lat: number;
+    lng: number;
+    ts: number;
+    speed?: number;
+    delay?: number;
+}
 
-const root = protobuf.parse(PROTO_DEF).root;
-const FeedMessage = root.lookupType("transit_realtime.FeedMessage");
+interface IngestTrail {
+    tripId: string;
+    vehicleId: string;
+    line: string;
+    lastUpdate: string;
+    expireAt: Date;
+    trail: TrailPoint[];
+}
 
-const activeTracking = new Map<string, any>();
-let lastHeartbeat = Date.now();
-let savedEventsToday = 0;
-let currentTrackingDay = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Europe/Stockholm',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-}).format(new Date());
+interface IngestStopEvent {
+    t: string; // tripId
+    l: string; // line
+    s: string; // stopId
+    stopName: string;
+    d: string; // date string YYYY-MM-DD
+    ts: number;
+    st: boolean; // stopped
+    aa: number | null; // actual arrival secs of day
+    ad: number | null; // actual departure secs of day
+    sa: number | null; // scheduled arrival mins of day
+    sd: number | null; // scheduled departure mins of day
+    reg: boolean; // isReglering
+    expireAt: Date;
+}
 
-const getStockholmDateStr = (d: Date = new Date()) => {
-    return new Intl.DateTimeFormat('sv-SE', {
-        timeZone: 'Europe/Stockholm',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).format(d);
+// In-memory cache for instant low-latency serving
+export const inMemoryTrails = new Map<string, IngestTrail>();
+export const inMemoryStopEvents = new Map<string, Map<string, IngestStopEvent>>(); // tripId -> (stopId -> event)
+
+let isIngesting = false;
+let mongoClient: MongoClient | null = null;
+let lastIngestStatus = {
+    online: false,
+    tracking: 0,
+    lastUpdate: new Date().toISOString(),
+    text: "Initierar realtidsspårning..."
 };
 
-const getStockholmSeconds = (d: Date) => {
-    const parts = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: 'Europe/Stockholm',
-        hour: 'numeric',
-        minute: 'numeric',
-        second: 'numeric',
-        hour12: false
-    }).formatToParts(d);
-    let h = 0, m = 0, s = 0;
-    for (const p of parts) {
-        if (p.type === 'hour') h = parseInt(p.value, 10);
-        if (p.type === 'minute') m = parseInt(p.value, 10);
-        if (p.type === 'second') s = parseInt(p.value, 10);
-    }
-    return (h % 24) * 3600 + m * 60 + s;
-};
+// Fast distance calculation in meters
+function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3;
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
 
-async function runIngest() {
-    const uri = process.env.MONGODB_URI;
-    const apiKey = process.env.RT_API_KEY;
+    const a =
+        Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+        Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
 
-    if (!uri || !apiKey) {
-        console.error("❌ MONGODB_URI eller RT_API_KEY saknas i .env filen!");
-        process.exit(1);
-    }
+function timeStringToSeconds(t?: string): number | null {
+    if (!t) return null;
+    const parts = t.split(":");
+    if (parts.length < 2) return null;
+    let h = parseInt(parts[0], 10);
+    if (h >= 24) h -= 24;
+    const m = parseInt(parts[1], 10) || 0;
+    const s = parseInt(parts[2], 10) || 0;
+    return h * 3600 + m * 60 + s;
+}
 
-    console.log("🚀 Startar optimerad SL Ingest Combo Service...");
-    const client = new MongoClient(uri);
+function timeStringToMinutes(t?: string): number | null {
+    const secs = timeStringToSeconds(t);
+    return secs !== null ? Math.round(secs / 60) : null;
+}
 
+function formatSecondsToTime(secs: number | null): string | null {
+    if (secs === null || isNaN(Number(secs))) return null;
+    let h = Math.floor(Number(secs) / 3600) % 24;
+    const m = Math.floor((Number(secs) % 3600) / 60);
+    const s = Number(secs) % 60;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+export async function startIngest() {
+    if (isIngesting) return;
+    isIngesting = true;
+
+    console.log("--- Startar Realtidsingest för bussar och båtar (trails & stopp med 4h TTL) ---");
+
+    // Load trip-to-route mapping
+    let tripToRouteMap: Record<string, { r: string; h?: string }> = {};
     try {
-        await client.connect();
-        console.log("✅ Ansluten till databasen.");
+        const ttrPath = path.join(DATA_DIR, "trip-to-route.json");
+        if (fs.existsSync(ttrPath)) {
+            tripToRouteMap = JSON.parse(fs.readFileSync(ttrPath, "utf-8"));
+            console.log(`Laddade ${Object.keys(tripToRouteMap).length} resor i trip-to-route map.`);
+        }
+    } catch (err) {
+        console.warn("Kunde inte läsa trip-to-route.json:", err);
+    }
 
-        const db = client.db("sl-times");
-        const trailsCollection = db.collection("vehicle_trails");
-        const stopEventsCollection = db.collection("stop_events");
-        const tripsCollection = db.collection("trips");
-        const stopsCollection = db.collection("stops");
-        const statusCollection = db.collection("status");
-
-        await stopEventsCollection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(console.error);
-        await stopEventsCollection.createIndex({ d: 1, l: 1, s: 1, sdm: 1 }).catch(console.error);
-        await stopEventsCollection.createIndex({ t: 1, ts: -1 }).catch(console.error);
-        await trailsCollection.createIndex({ tripId: 1 }, { unique: true }).catch(console.error);
-        await trailsCollection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(console.error);
-
-        const cleanupOldStopEvents = async () => {
-            try {
-                const cutoff = new Date();
-                cutoff.setDate(cutoff.getDate() - HISTORY_EXPIRE_DAYS);
-                const cutoffDateStr = getStockholmDateStr(cutoff);
-                const cutoffTs = cutoff.getTime();
-
-                const res = await stopEventsCollection.deleteMany({
-                    $or: [
-                        { d: { $lt: cutoffDateStr } },
-                        { ts: { $lt: cutoffTs } },
-                        { expireAt: { $lt: new Date() } }
-                    ]
-                });
-                if (res.deletedCount > 0) {
-                    console.log(`🧹 Rensade ${res.deletedCount} gamla stop_events äldre än ${HISTORY_EXPIRE_DAYS} dagar (före ${cutoffDateStr}).`);
-                }
-            } catch (e: any) {
-                console.error("⚠️ Fel vid rensning av gamla stop_events:", e?.message || e);
+    // Cache line routes in memory
+    const lineRoutesCache = new Map<string, any>();
+    function getLineRoute(lineId: string): any {
+        if (lineRoutesCache.has(lineId)) return lineRoutesCache.get(lineId);
+        try {
+            const p = path.join(LINES_DIR, `${lineId}.json`);
+            if (fs.existsSync(p)) {
+                const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+                lineRoutesCache.set(lineId, data);
+                return data;
             }
-        };
+        } catch { }
+        return null;
+    }
 
-        // Kör automatisk rensning vid start och var 12:e timme
-        cleanupOldStopEvents().catch(console.error);
-        setInterval(cleanupOldStopEvents, 12 * 60 * 60 * 1000);
+    // Connect to MongoDB
+    const mongoUri = process.env.MONGODB_URI;
+    let db: any = null;
+    if (mongoUri) {
+        try {
+            mongoClient = new MongoClient(mongoUri, {
+                maxPoolSize: 10,
+                connectTimeoutMS: 15000,
+                socketTimeoutMS: 45000
+            });
+            await mongoClient.connect();
+            db = mongoClient.db(DB_NAME);
+            console.log("Ansluten till MongoDB för spårning av dagens turer.");
 
-        console.log("📦 Hämtar hållplatsdata...");
-        const allStops = await stopsCollection.find({}).toArray();
-        const stopLookup = new Map<string, any>();
-        allStops.forEach(s => stopLookup.set(s.id, s));
-        console.log(`📍 ${stopLookup.size} hållplatser inlästa.`);
+            // Ensure TTL index on expireAt so old documents are deleted after 4 hours
+            await Promise.all([
+                db.collection("vehicle_trails").createIndex({ tripId: 1 }, { unique: true }).catch(() => { }),
+                db.collection("vehicle_trails").createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(() => { }),
+                db.collection("stop_events").createIndex({ t: 1, s: 1 }, { unique: true }).catch(() => { }),
+                db.collection("stop_events").createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }).catch(() => { })
+            ]);
 
-        setInterval(() => {
+            // Prune any legacy documents that expired
+            await Promise.all([
+                db.collection("vehicle_trails").deleteMany({ expireAt: { $lt: new Date() } }).catch(() => { }),
+                db.collection("stop_events").deleteMany({ expireAt: { $lt: new Date() } }).catch(() => { })
+            ]);
+        } catch (err) {
+            console.warn("MongoDB initialisering misslyckades (använder in-memory cache som fallback):", err);
+        }
+    }
+
+    // Load Protobuf definitions
+    const protoRoot = await protobuf.parse(`
+    syntax = "proto2";
+    package transit_realtime;
+    message FeedMessage { required FeedHeader header = 1; repeated FeedEntity entity = 2; }
+    message FeedHeader { required string gtfs_realtime_version = 1; optional uint64 timestamp = 3; }
+    message FeedEntity { required string id = 1; optional VehiclePosition vehicle = 4; optional TripUpdate trip_update = 3; }
+    message VehiclePosition { optional TripDescriptor trip = 1; optional VehicleDescriptor vehicle = 8; optional Position position = 2; }
+    message TripUpdate { optional TripDescriptor trip = 1; repeated StopTimeUpdate stop_time_update = 2; }
+    message StopTimeUpdate { optional uint32 stop_sequence = 1; optional string stop_id = 4; optional StopTimeEvent arrival = 2; optional StopTimeEvent departure = 3; }
+    message StopTimeEvent { optional int32 delay = 1; optional int64 time = 2; }
+    message TripDescriptor { optional string trip_id = 1; optional string route_id = 5; optional uint32 direction_id = 6; }
+    message VehicleDescriptor { optional string id = 1; optional string label = 2; }
+    message Position { required float latitude = 1; required float longitude = 2; optional float bearing = 3; optional float speed = 5; }
+  `).root;
+    const FeedMessage = protoRoot.lookupType("transit_realtime.FeedMessage");
+
+    // Track vehicles dwelling at stops
+    const dwellingVehicles = new Map<string, { stopId: string; enterTime: number; firstSpeed: number }>();
+
+    // Ingest loop
+    async function pollRealtime() {
+        try {
+            const apiKey = process.env.RT_API_KEY;
+            if (!apiKey) {
+                lastIngestStatus = {
+                    online: false,
+                    tracking: 0,
+                    lastUpdate: new Date().toISOString(),
+                    text: "Saknar RT_API_KEY"
+                };
+                return;
+            }
+
+            const [posRes, updateRes] = await Promise.all([
+                fetch(`https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/VehiclePositionsSweden.pb?key=${apiKey}`),
+                fetch(`https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/TripUpdatesSweden.pb?key=${apiKey}`)
+            ]);
+
+            if (!posRes.ok) {
+                console.warn("Kunde inte hämta fordonsdata:", posRes.status);
+                return;
+            }
+
+            const [posBuf, updateBuf] = await Promise.all([
+                posRes.arrayBuffer(),
+                updateRes.ok ? updateRes.arrayBuffer() : Promise.resolve(null)
+            ]);
+
+            const posMsg = FeedMessage.decode(new Uint8Array(posBuf));
+            const posObj = FeedMessage.toObject(posMsg, { enums: String, longs: String });
+
+            const tripUpdatesMap = new Map<string, { delay?: number; stopUpdates?: any[] }>();
+            if (updateBuf) {
+                const updateMsg = FeedMessage.decode(new Uint8Array(updateBuf));
+                const updateObj = FeedMessage.toObject(updateMsg, { enums: String, longs: String });
+                for (const e of updateObj.entity || []) {
+                    if (e.tripUpdate?.trip) {
+                        const tId = e.tripUpdate.trip.tripId || e.tripUpdate.trip.trip_id;
+                        const stu = e.tripUpdate.stopTimeUpdate;
+                        const delay = stu?.[0]?.arrival?.delay ?? stu?.[0]?.departure?.delay;
+                        if (tId) {
+                            tripUpdatesMap.set(tId, { delay, stopUpdates: stu });
+                        }
+                    }
+                }
+            }
+
             const now = Date.now();
-            let cleaned = 0;
-            for (const [tripId, data] of activeTracking.entries()) {
-                if (now - data.lastSeen > 20 * 60 * 1000) {
-                    activeTracking.delete(tripId);
-                    cleaned++;
+            const nowDate = new Date(now);
+            const expireDate = new Date(now + RETENTION_MS);
+            const todayDateStr = new Intl.DateTimeFormat("sv-SE", {
+                timeZone: "Europe/Stockholm",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit"
+            }).format(nowDate);
+
+            // Seconds of day
+            const stockholmTime = new Intl.DateTimeFormat("sv-SE", {
+                timeZone: "Europe/Stockholm",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false
+            }).format(nowDate);
+            const [curH, curM, curS] = stockholmTime.split(":").map(Number);
+            const currentSecsOfDay = curH * 3600 + curM * 60 + curS;
+
+            const entities = posObj.entity || [];
+            let trackedCount = 0;
+
+            const bulkTrailOps: any[] = [];
+            const bulkStopOps: any[] = [];
+
+            for (const entity of entities) {
+                const v = entity.vehicle;
+                if (!v || !v.trip || !v.position) continue;
+                const tripId = v.trip.tripId || v.trip.trip_id;
+                if (!tripId) continue;
+
+                const lat = v.position.latitude;
+                const lng = v.position.longitude;
+                if (typeof lat !== "number" || typeof lng !== "number") continue;
+
+                const vehicleId = v.vehicle?.id || v.vehicle?.label || entity.id;
+                const mapInfo = tripToRouteMap[tripId];
+                const routeId = mapInfo?.r || v.trip.routeId || v.trip.route_id || "";
+                const speed = (v.position.speed || 0) * 3.6;
+                const tripInfo = tripUpdatesMap.get(tripId);
+                const delay = tripInfo?.delay;
+
+                trackedCount++;
+
+                // 1. UPDATE TRAIL
+                let cachedTrail = inMemoryTrails.get(tripId);
+                if (!cachedTrail) {
+                    cachedTrail = {
+                        tripId,
+                        vehicleId,
+                        line: routeId,
+                        lastUpdate: nowDate.toISOString(),
+                        expireAt: expireDate,
+                        trail: []
+                    };
+                    inMemoryTrails.set(tripId, cachedTrail);
                 }
-            }
-            if (cleaned > 0) console.log(`🧹 Rensade ${cleaned} inaktiva resor från RAM.`);
-        }, 15 * 60 * 1000);
 
-        while (true) {
-            const startTime = Date.now();
-            let statusMessage = "Hämtar data...";
-            let cleanText = "Hämtar data...";
-            let aktivBool = 0;
-            let trackerCount = 0;
+                const points = cachedTrail.trail;
+                const lastPoint = points[points.length - 1];
 
-            try {
-                const response = await fetch(`${API_ENDPOINT}?key=${apiKey}`);
-                if (!response.ok) throw new Error(`API Error: ${response.status}`);
-
-                const arrayBuffer = await response.arrayBuffer();
-                const message = FeedMessage.decode(new Uint8Array(arrayBuffer));
-                const object: any = FeedMessage.toObject(message, { enums: String, longs: String, defaults: true });
-                const entities = object.entity || [];
-
-                const timeStr = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const now = Date.now();
-
-                const todayStockholm = getStockholmDateStr();
-                if (todayStockholm !== currentTrackingDay) {
-                    currentTrackingDay = todayStockholm;
-                    savedEventsToday = 0;
-                }
-
-                if (entities.length === 0) {
-                    statusMessage = `Inga fordon hittades (${timeStr})`;
-                    cleanText = statusMessage;
+                let shouldAddPoint = false;
+                if (!lastPoint) {
+                    shouldAddPoint = true;
                 } else {
-                    const tripDelays: Record<string, number> = {};
-                    entities.forEach((e: any) => {
-                        if (e.tripUpdate?.trip?.tripId) {
-                            const updates = e.tripUpdate.stopTimeUpdate;
-                            if (updates?.length > 0) {
-                                const first = updates[0];
-                                let delay = first.arrival?.delay ?? first.departure?.delay;
-                                if (delay !== undefined) tripDelays[e.tripUpdate.trip.tripId] = parseInt(delay);
-                            }
+                    const dist = getDistanceMeters(lastPoint.lat, lastPoint.lng, lat, lng);
+                    const timeDiff = now - lastPoint.ts;
+                    // Add point if moved >= 12 meters OR if 12+ seconds elapsed and moved >= 3m
+                    if (dist >= 12 || (timeDiff >= 12000 && dist >= 3)) {
+                        shouldAddPoint = true;
+                    }
+                }
+
+                if (shouldAddPoint) {
+                    const newPt: TrailPoint = {
+                        lat,
+                        lng,
+                        ts: now,
+                        speed: Math.round(speed * 10) / 10,
+                        delay
+                    };
+                    points.push(newPt);
+                    // Keep up to 350 points per trail
+                    if (points.length > 350) points.shift();
+
+                    cachedTrail.lastUpdate = nowDate.toISOString();
+                    cachedTrail.expireAt = expireDate;
+
+                    bulkTrailOps.push({
+                        updateOne: {
+                            filter: { tripId },
+                            update: {
+                                $set: {
+                                    vehicleId,
+                                    line: routeId,
+                                    lastUpdate: cachedTrail.lastUpdate,
+                                    expireAt: expireDate
+                                },
+                                $push: {
+                                    trail: {
+                                        $each: [newPt],
+                                        $slice: -350
+                                    }
+                                }
+                            },
+                            upsert: true
                         }
                     });
+                }
 
-                    const expireTime = new Date(now + TRAIL_EXPIRE_HOURS * 60 * 60 * 1000);
-                    const trackerOps: AnyBulkWriteOperation[] = [];
+                // 2. DETECT STOP PASSAGES & STOPS (where all buses have stopped and passed)
+                if (routeId) {
+                    const lineData = getLineRoute(routeId);
+                    if (lineData && Array.isArray(lineData.stops)) {
+                        let tripStopsMap = inMemoryStopEvents.get(tripId);
+                        if (!tripStopsMap) {
+                            tripStopsMap = new Map();
+                            inMemoryStopEvents.set(tripId, tripStopsMap);
+                        }
 
-                    for (const e of entities) {
-                        const v = e.vehicle;
-                        if (!v || !v.trip || !v.position) continue;
+                        const threshold = lineData.agency === "WAAB" ? 120 : 65;
 
-                        const tripId = v.trip.tripId || e.id;
-                        const routeId = v.trip.routeId;
-                        if (!tripId) continue;
+                        for (const stop of lineData.stops) {
+                            const stopIdStr = String(stop.id);
+                            const dist = getDistanceMeters(lat, lng, stop.lat, stop.lng);
 
-                        if (!activeTracking.has(tripId)) {
-                            const tripDoc = await tripsCollection.findOne({ _id: tripId as any });
-                            if (tripDoc && tripDoc.stops) {
-                                const hasInterpolated = tripDoc.stops.some((s: any) =>
-                                    (s.arr && !s.arr.endsWith(':00')) || (s.dep && !s.dep.endsWith(':00'))
-                                );
-                                const stopMap = new Map();
-                                tripDoc.stops.forEach((s: any, idx: number) => {
-                                    const sInfo = stopLookup.get(s.id);
-                                    if (sInfo) {
-                                        const isTerminal = idx === 0 || idx === tripDoc.stops.length - 1;
-                                        const isDwell = s.arr && s.dep && s.arr !== s.dep;
-                                        const isTimepoint = hasInterpolated && (s.arr?.endsWith(':00') || s.dep?.endsWith(':00'));
-                                        const isReg = isTerminal || isDwell || isTimepoint;
+                            if (dist <= threshold) {
+                                const dwellKey = `${tripId}_${stopIdStr}`;
+                                const existingDwell = dwellingVehicles.get(dwellKey);
+                                const isSlow = speed < 3.0; // km/h
 
-                                        stopMap.set(s.id, {
-                                            routeId: tripDoc.routeId,
-                                            destinationName: tripDoc.destinationName,
-                                            arrival: s.arr,
-                                            departure: s.dep,
-                                            scheduledMinutes: s.mins,
-                                            isReglering: isReg,
-                                            lat: sInfo.lat,
-                                            lng: sInfo.lng,
-                                            arrivalRegistered: null,
-                                            hasStopped: false,
-                                            completed: false
+                                if (!existingDwell) {
+                                    dwellingVehicles.set(dwellKey, {
+                                        stopId: stopIdStr,
+                                        enterTime: now,
+                                        firstSpeed: speed
+                                    });
+                                }
+
+                                // Check or create event
+                                let existingEv = tripStopsMap.get(stopIdStr);
+                                const schedArr = timeStringToMinutes(stop.scheduledArrival);
+                                const schedDep = timeStringToMinutes(stop.scheduledDeparture);
+
+                                if (!existingEv) {
+                                    const stopped = isSlow || (existingDwell ? now - existingDwell.enterTime >= 15000 : false);
+                                    existingEv = {
+                                        t: tripId,
+                                        l: routeId,
+                                        s: stopIdStr,
+                                        stopName: stop.name,
+                                        d: todayDateStr,
+                                        ts: now,
+                                        st: stopped,
+                                        aa: currentSecsOfDay,
+                                        ad: currentSecsOfDay,
+                                        sa: schedArr,
+                                        sd: schedDep,
+                                        reg: Boolean(stop.isReglering),
+                                        expireAt: expireDate
+                                    };
+                                    tripStopsMap.set(stopIdStr, existingEv);
+
+                                    bulkStopOps.push({
+                                        updateOne: {
+                                            filter: { t: tripId, s: stopIdStr },
+                                            update: { $set: existingEv },
+                                            upsert: true
+                                        }
+                                    });
+                                } else {
+                                    // Update departure time and stopped flag
+                                    let changed = false;
+                                    if (isSlow && !existingEv.st) {
+                                        existingEv.st = true;
+                                        changed = true;
+                                    }
+                                    existingEv.ad = currentSecsOfDay;
+                                    existingEv.ts = now;
+                                    existingEv.expireAt = expireDate;
+
+                                    if (changed || Math.abs(currentSecsOfDay - (existingEv.ad || 0)) >= 5) {
+                                        bulkStopOps.push({
+                                            updateOne: {
+                                                filter: { t: tripId, s: stopIdStr },
+                                                update: {
+                                                    $set: {
+                                                        st: existingEv.st,
+                                                        ad: existingEv.ad,
+                                                        ts: now,
+                                                        expireAt: expireDate
+                                                    }
+                                                }
+                                            }
                                         });
                                     }
-                                });
-                                activeTracking.set(tripId, { stops: stopMap, lastSeen: now });
-                            } else {
-                                activeTracking.set(tripId, { lastSeen: now, notFound: true });
-                            }
-                        }
-
-                        const tripData = activeTracking.get(tripId);
-                        tripData.lastSeen = now;
-
-                        const posStr = `${v.position.latitude},${v.position.longitude}`;
-                        let prevPos = null;
-                        if (tripData.lastPos && tripData.lastPos !== posStr) {
-                            const [lat, lng] = tripData.lastPos.split(',').map(Number);
-                            prevPos = { latitude: lat, longitude: lng };
-                        }
-
-                        if (tripData.lastPos === posStr && tripData.lastTimestamp === v.timestamp) {
-                            continue;
-                        }
-                        tripData.lastPos = posStr;
-                        tripData.lastTimestamp = v.timestamp;
-
-                        trackerOps.push({
-                            updateOne: {
-                                filter: { tripId: tripId },
-                                update: {
-                                    $set: { line: routeId, vehicleId: v.vehicle?.id || e.id, expireAt: expireTime, lastUpdate: now },
-                                    $push: { trail: { lat: v.position.latitude, lng: v.position.longitude, ts: now, delay: tripDelays[tripId] ?? null } } as any
-                                },
-                                upsert: true
-                            }
-                        });
-
-                        if (tripData.notFound) continue;
-
-                        const pos = { latitude: v.position.latitude, longitude: v.position.longitude };
-                        const speed = (v.position.speed || 0) * 3.6;
-
-                        const getMeters = (p1lat: number, p1lng: number, p2lat: number, p2lng: number) => {
-                            const R = 6371e3;
-                            const latCos = Math.cos(p1lat * Math.PI / 180);
-                            return {
-                                x: (p2lng - p1lng) * (Math.PI / 180) * R * latCos,
-                                y: (p2lat - p1lat) * (Math.PI / 180) * R
-                            };
-                        };
-
-                        const pointLineDistance = (p1lat: number, p1lng: number, p2lat: number, p2lng: number, plat: number, plng: number) => {
-                            const pm = getMeters(p1lat, p1lng, plat, plng);
-                            const p2m = getMeters(p1lat, p1lng, p2lat, p2lng);
-                            const l2 = p2m.x * p2m.x + p2m.y * p2m.y;
-                            if (l2 === 0) return Math.sqrt(pm.x * pm.x + pm.y * pm.y);
-                            let t = (pm.x * p2m.x + pm.y * p2m.y) / l2;
-                            t = Math.max(0, Math.min(1, t));
-                            const dx = pm.x - t * p2m.x;
-                            const dy = pm.y - t * p2m.y;
-                            return Math.sqrt(dx * dx + dy * dy);
-                        };
-
-                        for (const [stopId, data] of tripData.stops.entries()) {
-                            if (data.completed) continue;
-                            let dist = getDistance(pos, { latitude: data.lat, longitude: data.lng });
-
-                            if (prevPos) {
-                                const segDist = pointLineDistance(prevPos.latitude, prevPos.longitude, pos.latitude, pos.longitude, data.lat, data.lng);
-                                if (segDist < dist) dist = segDist;
-                            }
-
-                            if (dist <= STOP_RADIUS) {
-                                if (!data.arrivalRegistered) {
-                                    data.arrivalRegistered = new Date();
-                                    console.log(`📍 [Resa ${tripId}] Ankommit till ${stopId}`);
                                 }
-                                if (speed <= STOPPED_SPEED_THRESHOLD) data.hasStopped = true;
-                            } else if (data.arrivalRegistered && dist > STOP_RADIUS + 25) {
-                                data.completed = true;
-                                const departureTime = new Date();
-                                const dateStr = getStockholmDateStr(departureTime);
-
-                                const actualArrivalSeconds = getStockholmSeconds(data.arrivalRegistered);
-                                const actualDepartureSeconds = getStockholmSeconds(departureTime);
-
-                                const timeStopped = departureTime.getTime() - data.arrivalRegistered.getTime();
-                                const wasStopped = data.hasStopped || timeStopped >= 25000;
-
-                                const event = {
-                                    _id: `${dateStr}_${tripId}_${stopId}`,
-                                    t: tripId,
-                                    l: data.routeId,
-                                    dn: data.destinationName,
-                                    s: stopId,
-                                    d: dateStr,
-                                    ts: Date.now(),
-                                    expireAt: new Date(Date.now() + HISTORY_EXPIRE_DAYS * 24 * 60 * 60 * 1000),
-                                    sa: typeof data.arrival === 'string' ? (Number(data.arrival.split(':')[0]) * 60 + Number(data.arrival.split(':')[1])) : data.arrival,
-                                    sd: typeof data.departure === 'string' ? (Number(data.departure.split(':')[0]) * 60 + Number(data.departure.split(':')[1])) : data.departure,
-                                    sdm: data.scheduledMinutes,
-                                    aa: actualArrivalSeconds,
-                                    ad: actualDepartureSeconds,
-                                    st: wasStopped,
-                                    reg: Boolean(data.isReglering)
-                                };
-
-                                await stopEventsCollection.updateOne({ _id: event._id as any }, { $set: event }, { upsert: true });
-                                savedEventsToday++;
-                                console.log(`✅ [Resa ${tripId}] SPARAT: Stopp vid ${stopId} (${event.st ? 'STANNADE' : 'PASSERADE'})`);
+                            } else {
+                                // If previously dwelling and now moved away, clean up dwell map
+                                const dwellKey = `${tripId}_${stopIdStr}`;
+                                if (dwellingVehicles.has(dwellKey)) {
+                                    dwellingVehicles.delete(dwellKey);
+                                }
                             }
-                        }
-                    }
-
-                    trackerCount = trackerOps.length;
-                    if (trackerCount > 0) {
-                        await trailsCollection.bulkWrite(trackerOps, { ordered: false });
-                        aktivBool = 1;
-                        statusMessage = `Aktiv: <font color='#00ff00'>${trackerCount}</font> fordon (${timeStr})`;
-                        cleanText = `Aktiv: ${trackerCount} fordon (${timeStr})`;
-
-                        if (now - lastHeartbeat > 30000) {
-                            console.log(`[${timeStr}] 📊 Tracker: ${trackerCount} fordon | 📋 Övervakar: ${activeTracking.size} resor | ✅ Sparat idag: ${savedEventsToday}`);
-                            lastHeartbeat = now;
                         }
                     }
                 }
-            } catch (err: any) {
-                const timeStr = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-                statusMessage = `<font color='red'>FEL: Loop-avbrott</font> (${timeStr})`;
-                console.error(`❌ Loop-fel vid ${timeStr}:`, err?.message || err);
             }
 
-            try {
-                if (fs.existsSync(path.dirname(STATUS_FILE_PATH))) {
-                    fs.writeFileSync(STATUS_FILE_PATH, statusMessage);
-                    fs.writeFileSync(STATUS_JSON_PATH, JSON.stringify({ text: cleanText, aktiv: aktivBool }));
+            // Write batch to MongoDB
+            if (db) {
+                if (bulkTrailOps.length > 0) {
+                    db.collection("vehicle_trails").bulkWrite(bulkTrailOps, { ordered: false }).catch(() => { });
+                }
+                if (bulkStopOps.length > 0) {
+                    db.collection("stop_events").bulkWrite(bulkStopOps, { ordered: false }).catch(() => { });
                 }
 
-                await statusCollection.updateOne(
-                    { _id: "ingest_status" as any },
+                // Update status doc in database
+                db.collection("status").updateOne(
+                    { _id: "ingest_status" },
                     {
                         $set: {
-                            lastUpdate: new Date(),
-                            text: cleanText,
-                            aktiv: aktivBool === 1,
-                            tracking: trackerCount,
-                            monitoring: activeTracking.size,
-                            savedToday: savedEventsToday
+                            online: true,
+                            tracking: trackedCount,
+                            lastUpdate: nowDate.toISOString(),
+                            text: `Aktiv: ${trackedCount} fordon i spårning (${stockholmTime})`
                         }
                     },
                     { upsert: true }
-                );
-            } catch (e: any) {
-                console.error("⚠️ Kunde inte spara status-dokument/fil:", e?.message || e);
+                ).catch(() => { });
             }
 
-            const workDuration = Date.now() - startTime;
-            await new Promise(resolve => setTimeout(resolve, Math.max(100, INTERVAL_MS - workDuration)));
+            lastIngestStatus = {
+                online: true,
+                tracking: trackedCount,
+                lastUpdate: nowDate.toISOString(),
+                text: `Aktiv: ${trackedCount} fordon i spårning (${stockholmTime})`
+            };
+        } catch (err) {
+            console.error("Fel i realtidsingest-loop:", err);
         }
-    } catch (fatal: any) {
-        console.error("FATALT FEL I TJÄNSTEN:", fatal?.message || fatal);
-        process.exit(1);
     }
+
+    // Periodic in-memory prune to clean up trips older than 4 hours
+    setInterval(() => {
+        const cutoff = Date.now();
+        for (const [tripId, tr] of inMemoryTrails.entries()) {
+            if (tr.expireAt.getTime() <= cutoff) {
+                inMemoryTrails.delete(tripId);
+            }
+        }
+        for (const [tripId, evs] of inMemoryStopEvents.entries()) {
+            let allExpired = true;
+            for (const [, ev] of evs.entries()) {
+                if (ev.expireAt.getTime() > cutoff) {
+                    allExpired = false;
+                    break;
+                }
+            }
+            if (allExpired) inMemoryStopEvents.delete(tripId);
+        }
+    }, 10 * 60 * 1000);
+
+    // Initial poll and recurring timer
+    await pollRealtime();
+    setInterval(pollRealtime, 3500);
 }
 
-runIngest().catch(console.error);
+// Helpers for API endpoints
+export async function getTripTrail(tripId: string): Promise<TrailPoint[]> {
+    // 1. Try in-memory
+    const mem = inMemoryTrails.get(tripId);
+    if (mem && mem.trail.length > 0) {
+        return mem.trail;
+    }
+
+    // 2. Try MongoDB
+    if (mongoClient) {
+        try {
+            const doc = await mongoClient.db(DB_NAME).collection("vehicle_trails").findOne({ tripId });
+            if (doc && Array.isArray(doc.trail)) {
+                return doc.trail;
+            }
+        } catch { }
+    }
+
+    return [];
+}
+
+export async function getTripStopEvents(tripId: string): Promise<any[]> {
+    // 1. Try in-memory
+    const memStops = inMemoryStopEvents.get(tripId);
+    if (memStops && memStops.size > 0) {
+        return Array.from(memStops.values()).map(e => ({
+            stopId: e.s,
+            stopName: e.stopName,
+            stopped: e.st,
+            isReglering: e.reg,
+            actualArrival: formatSecondsToTime(e.aa),
+            actualDeparture: formatSecondsToTime(e.ad),
+            scheduledArrival: formatSecondsToTime(e.sa !== null ? e.sa * 60 : null),
+            scheduledDeparture: formatSecondsToTime(e.sd !== null ? e.sd * 60 : null)
+        }));
+    }
+
+    // 2. Try MongoDB
+    if (mongoClient) {
+        try {
+            const docs = await mongoClient.db(DB_NAME).collection("stop_events").find({ t: tripId }).sort({ ts: 1 }).toArray();
+            if (docs && docs.length > 0) {
+                return docs.map((e: any) => ({
+                    stopId: e.s,
+                    stopName: e.stopName || e.dn || "",
+                    stopped: Boolean(e.st),
+                    isReglering: Boolean(e.reg),
+                    actualArrival: formatSecondsToTime(e.aa),
+                    actualDeparture: formatSecondsToTime(e.ad),
+                    scheduledArrival: formatSecondsToTime(e.sa !== null ? (e.sa > 3600 ? e.sa : e.sa * 60) : null),
+                    scheduledDeparture: formatSecondsToTime(e.sd !== null ? (e.sd > 3600 ? e.sd : e.sd * 60) : null)
+                }));
+            }
+        } catch { }
+    }
+
+    return [];
+}
+
+export function getIngestStatus() {
+    return lastIngestStatus;
+}
+
+// Allow direct CLI execution: tsx scripts/ingest-rt.ts
+if (process.argv[1] && process.argv[1].endsWith("ingest-rt.ts")) {
+    startIngest().catch(console.error);
+}
