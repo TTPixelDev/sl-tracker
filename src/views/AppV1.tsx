@@ -23,7 +23,7 @@ export default function AppV1() {
             const saved = localStorage.getItem('sl_mapStyle');
             if (saved === 'standard' || saved === 'minimal') return saved;
         } catch (e) { }
-        return 'standard';
+        return 'minimal';
     });
 
     useEffect(() => {
@@ -50,7 +50,7 @@ export default function AppV1() {
             const saved = localStorage.getItem('sl_showAll');
             if (saved !== null) return saved === 'true';
         } catch (e) { }
-        return true;
+        return false;
     });
 
     useEffect(() => {
@@ -66,7 +66,7 @@ export default function AppV1() {
             const saved = localStorage.getItem('sl_isFollowingVehicle');
             if (saved !== null) return saved === 'true';
         } catch (e) { }
-        return true;
+        return false;
     });
 
     useEffect(() => {

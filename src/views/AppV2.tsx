@@ -11,13 +11,13 @@ import L from 'leaflet';
 export default function AppV2() {
     const [loading, setLoading] = useState(true);
 
-    // Map style: standard or minimal
+    // Map style: standard (detailed) or minimal (sleek). Default off/minimal unless saved
     const [mapStyle, setMapStyle] = useState<'standard' | 'minimal'>(() => {
         try {
             const saved = localStorage.getItem('sl_mapStyle');
             if (saved === 'standard' || saved === 'minimal') return saved;
         } catch (e) { }
-        return 'standard';
+        return 'minimal';
     });
 
     useEffect(() => {
@@ -33,13 +33,13 @@ export default function AppV2() {
         return a === 'WAAB' ? 'WAAB' : 'SL';
     });
 
-    // Show all vehicles toggle (default to true so vehicles in traffic are visible on map)
+    // Show all vehicles toggle (default off/false unless saved in localStorage)
     const [showAll, setShowAll] = useState(() => {
         try {
             const saved = localStorage.getItem('sl_showAll');
             if (saved !== null) return saved === 'true';
         } catch (e) { }
-        return true;
+        return false;
     });
 
     useEffect(() => {
@@ -48,13 +48,13 @@ export default function AppV2() {
         } catch (e) { }
     }, [showAll]);
 
-    // Auto-follow vehicle
+    // Auto-follow vehicle (default off/false unless saved in localStorage)
     const [isFollowingVehicle, setIsFollowingVehicle] = useState(() => {
         try {
             const saved = localStorage.getItem('sl_isFollowingVehicle');
             if (saved !== null) return saved === 'true';
         } catch (e) { }
-        return true;
+        return false;
     });
 
     useEffect(() => {
