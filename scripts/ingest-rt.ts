@@ -165,16 +165,63 @@ export async function startIngest() {
     const protoRoot = await protobuf.parse(`
     syntax = "proto2";
     package transit_realtime;
-    message FeedMessage { required FeedHeader header = 1; repeated FeedEntity entity = 2; }
-    message FeedHeader { required string gtfs_realtime_version = 1; optional uint64 timestamp = 3; }
-    message FeedEntity { required string id = 1; optional VehiclePosition vehicle = 4; optional TripUpdate trip_update = 3; }
-    message VehiclePosition { optional TripDescriptor trip = 1; optional VehicleDescriptor vehicle = 8; optional Position position = 2; }
-    message TripUpdate { optional TripDescriptor trip = 1; repeated StopTimeUpdate stop_time_update = 2; }
-    message StopTimeUpdate { optional uint32 stop_sequence = 1; optional string stop_id = 4; optional StopTimeEvent arrival = 2; optional StopTimeEvent departure = 3; }
-    message StopTimeEvent { optional int32 delay = 1; optional int64 time = 2; }
-    message TripDescriptor { optional string trip_id = 1; optional string route_id = 5; optional uint32 direction_id = 6; }
-    message VehicleDescriptor { optional string id = 1; optional string label = 2; }
-    message Position { required float latitude = 1; required float longitude = 2; optional float bearing = 3; optional float speed = 5; }
+
+    message TripDescriptor {
+      optional string trip_id = 1;
+      optional string route_id = 5;
+      optional uint32 direction_id = 6;
+    }
+
+    message VehicleDescriptor {
+      optional string id = 1;
+      optional string label = 2;
+    }
+
+    message Position {
+      required float latitude = 1;
+      required float longitude = 2;
+      optional float bearing = 3;
+      optional float speed = 5;
+    }
+
+    message VehiclePosition {
+      optional TripDescriptor trip = 1;
+      optional VehicleDescriptor vehicle = 8;
+      optional Position position = 2;
+    }
+
+    message StopTimeEvent {
+      optional int32 delay = 1;
+      optional int64 time = 2;
+    }
+
+    message StopTimeUpdate {
+      optional uint32 stop_sequence = 1;
+      optional string stop_id = 4;
+      optional StopTimeEvent arrival = 2;
+      optional StopTimeEvent departure = 3;
+    }
+
+    message TripUpdate {
+      optional TripDescriptor trip = 1;
+      repeated StopTimeUpdate stop_time_update = 2;
+    }
+
+    message FeedEntity {
+      required string id = 1;
+      optional VehiclePosition vehicle = 4;
+      optional TripUpdate trip_update = 3;
+    }
+
+    message FeedHeader {
+      required string gtfs_realtime_version = 1;
+      optional uint64 timestamp = 3;
+    }
+
+    message FeedMessage {
+      required FeedHeader header = 1;
+      repeated FeedEntity entity = 2;
+    }
   `).root;
     const FeedMessage = protoRoot.lookupType("transit_realtime.FeedMessage");
 

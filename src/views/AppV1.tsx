@@ -45,7 +45,19 @@ export default function AppV1() {
     const [mapConfig, setMapConfig] = useState<any>({ center: [59.3293, 18.0686], zoom: 12 });
     const [routeManifest, setRouteManifest] = useState<Map<string, any>>(new Map());
     const [searchQuery, setSearchQuery] = useState('');
-    const [showAll, setShowAll] = useState(false);
+    const [showAll, setShowAll] = useState(() => {
+        try {
+            const saved = localStorage.getItem('sl_showAll');
+            if (saved !== null) return saved === 'true';
+        } catch (e) { }
+        return true;
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('sl_showAll', String(showAll));
+        } catch (e) { }
+    }, [showAll]);
     const [history, setHistory] = useState<HistoryPoint[]>([]);
     const [tripEvents, setTripEvents] = useState<any[]>([]);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);

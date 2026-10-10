@@ -28,32 +28,51 @@ class SLService {
   private stopsMap: Map<string, string> = new Map();
   private manifest: LineManifestEntry[] = [];
 
-  private async getDB(): Promise<IDBDatabase> {
+  private async getDB(): Promise<IDBDatabase | null> {
     if (this.db) return this.db;
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (db.objectStoreNames.contains('stops')) db.deleteObjectStore('stops');
-        if (db.objectStoreNames.contains('routes')) db.deleteObjectStore('routes');
-        db.createObjectStore('stops', { keyPath: 'id' }).createIndex('name', 'name');
-        db.createObjectStore('routes', { keyPath: 'id' }).createIndex('line', 'line');
-      };
-      request.onsuccess = () => { this.db = request.result; resolve(this.db); };
-      request.onerror = () => reject(request.error);
+    if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return null;
+    return new Promise((resolve) => {
+      try {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = () => {
+          try {
+            const db = request.result;
+            if (db.objectStoreNames.contains('stops')) db.deleteObjectStore('stops');
+            if (db.objectStoreNames.contains('routes')) db.deleteObjectStore('routes');
+            db.createObjectStore('stops', { keyPath: 'id' }).createIndex('name', 'name');
+            db.createObjectStore('routes', { keyPath: 'id' }).createIndex('line', 'line');
+          } catch (e) { }
+        };
+        request.onsuccess = () => { this.db = request.result; resolve(this.db); };
+        request.onerror = () => resolve(null);
+      } catch (err) {
+        resolve(null);
+      }
     });
   }
 
   async initialize() {
     if (this.isInitialized) return;
-    await this.getDB();
-    const lastUpdate = localStorage.getItem(STATIC_TS_KEY);
-    if (!lastUpdate || (Date.now() - parseInt(lastUpdate)) > CACHE_DURATION) {
+    try {
+      await this.getDB();
+    } catch { }
+
+    let loadedFromDB = false;
+    try {
+      const lastUpdate = typeof localStorage !== 'undefined' ? localStorage.getItem(STATIC_TS_KEY) : null;
+      if (lastUpdate && (Date.now() - parseInt(lastUpdate)) <= CACHE_DURATION && this.db) {
+        await this.loadStopsFromDB();
+        this.manifest = await this.getManifestFromDB();
+        if (this.manifest && this.manifest.length > 0) {
+          loadedFromDB = true;
+        }
+      }
+    } catch { }
+
+    if (!loadedFromDB || !this.manifest || this.manifest.length === 0) {
       await this.loadStaticDataFromFiles();
-    } else {
-      await this.loadStopsFromDB();
-      this.manifest = await this.getManifestFromDB();
     }
+
     await this.loadHelperMaps();
     this.isInitialized = true;
   }
@@ -89,39 +108,50 @@ class SLService {
   }
 
   private async loadStopsFromDB() {
-    const db = await this.getDB();
-    const tx = db.transaction('stops', 'readonly');
-    const req = tx.objectStore('stops').getAll();
-    req.onsuccess = () => { if (req.result) req.result.forEach((s: SLStop) => this.stopsMap.set(s.id, s.name)); };
+    if (!this.db) return;
+    try {
+      const tx = this.db.transaction('stops', 'readonly');
+      const req = tx.objectStore('stops').getAll();
+      req.onsuccess = () => { if (req.result) req.result.forEach((s: SLStop) => this.stopsMap.set(s.id, s.name)); };
+    } catch { }
   }
 
   private async getManifestFromDB(): Promise<LineManifestEntry[]> {
-    const db = await this.getDB();
+    if (!this.db) return [];
     return new Promise(resolve => {
-      const req = db.transaction('routes', 'readonly').objectStore('routes').getAll();
-      req.onsuccess = () => resolve(req.result);
+      try {
+        const tx = this.db!.transaction('routes', 'readonly');
+        const req = tx.objectStore('routes').getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      } catch {
+        resolve([]);
+      }
     });
   }
 
   private async loadStaticDataFromFiles() {
     try {
       const [manifestRes, stopsRes] = await Promise.all([fetch('/data/manifest.json'), fetch('/data/stops.json')]);
-      if (manifestRes.ok && stopsRes.ok) {
+      if (manifestRes.ok) {
         this.manifest = await manifestRes.json();
+      }
+      if (stopsRes.ok) {
         const stops: SLStop[] = await stopsRes.json();
         stops.forEach(s => this.stopsMap.set(s.id, s.name));
 
-        try {
-          const db = await this.getDB();
-          const tx = db.transaction(['stops', 'routes'], 'readwrite');
-          stops.forEach(s => tx.objectStore('stops').put(s));
-          this.manifest.forEach((r: LineManifestEntry) => tx.objectStore('routes').put(r));
-          localStorage.setItem(STATIC_TS_KEY, Date.now().toString());
-        } catch (dbErr) {
-          console.warn("Kunde inte spara till IndexedDB, kan bero på iframe-begränsningar:", dbErr);
+        if (this.db) {
+          try {
+            const tx = this.db.transaction(['stops', 'routes'], 'readwrite');
+            stops.forEach(s => tx.objectStore('stops').put(s));
+            this.manifest.forEach((r: LineManifestEntry) => tx.objectStore('routes').put(r));
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem(STATIC_TS_KEY, Date.now().toString());
+            }
+          } catch (dbErr) {
+            console.warn("Kunde inte spara till IndexedDB:", dbErr);
+          }
         }
-      } else {
-        console.warn("Servern returnerade inte 200 OK för data:", manifestRes.status, stopsRes.status);
       }
     } catch (e) { console.error("Kunde inte ladda data över nätverket:", e); }
   }
@@ -150,6 +180,22 @@ class SLService {
     // Fallback to local DB
     const q = trimmed.toLowerCase();
     const db = await this.getDB();
+
+    if (!db) {
+      const results: SearchResult[] = [];
+      if (targetType === 'line') {
+        const cleanLine = q.replace(/^(linje|line|l)\s*/i, '').trim();
+        for (const r of this.manifest) {
+          if (results.length >= 30) break;
+          if (currentAgency && r.agency !== currentAgency) continue;
+          const lineStr = (r.line || '').toLowerCase();
+          if (lineStr.startsWith(cleanLine) || (cleanLine.length > 1 && lineStr.includes(cleanLine))) {
+            results.push({ type: 'line', id: r.id, title: `Linje ${r.line}`, subtitle: `${r.from} - ${r.to}`, agency: r.agency });
+          }
+        }
+      }
+      return results;
+    }
 
     return new Promise(resolve => {
       const results: SearchResult[] = [];
@@ -278,12 +324,14 @@ class SLService {
   async getStopInfo(stopId: string): Promise<SLStop | null> {
     try {
       const db = await this.getDB();
-      const local: SLStop = await new Promise(resolve => {
-        const req = db.transaction('stops', 'readonly').objectStore('stops').get(stopId);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(null as any);
-      });
-      if (local) return local;
+      if (db) {
+        const local: SLStop = await new Promise(resolve => {
+          const req = db.transaction('stops', 'readonly').objectStore('stops').get(stopId);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null as any);
+        });
+        if (local) return local;
+      }
     } catch (e) { }
 
     try {
@@ -459,16 +507,63 @@ class SLService {
     this.rtRoot = await protobuf.parse(`
       syntax = "proto2";
       package transit_realtime;
-      message FeedMessage { required FeedHeader header = 1; repeated FeedEntity entity = 2; }
-      message FeedHeader { required string gtfs_realtime_version = 1; optional uint64 timestamp = 3; }
-      message FeedEntity { required string id = 1; optional VehiclePosition vehicle = 4; optional TripUpdate trip_update = 3; }
-      message VehiclePosition { optional TripDescriptor trip = 1; optional VehicleDescriptor vehicle = 8; optional Position position = 2; }
-      message TripUpdate { optional TripDescriptor trip = 1; repeated StopTimeUpdate stop_time_update = 2; }
-      message StopTimeUpdate { optional uint32 stop_sequence = 1; optional string stop_id = 4; optional StopTimeEvent arrival = 2; optional StopTimeEvent departure = 3; }
-      message StopTimeEvent { optional int32 delay = 1; optional int64 time = 2; }
-      message TripDescriptor { optional string trip_id = 1; optional string route_id = 5; optional uint32 direction_id = 6; }
-      message VehicleDescriptor { optional string id = 1; optional string label = 2; }
-      message Position { required float latitude = 1; required float longitude = 2; optional float bearing = 3; optional float speed = 5; }
+
+      message TripDescriptor {
+        optional string trip_id = 1;
+        optional string route_id = 5;
+        optional uint32 direction_id = 6;
+      }
+
+      message VehicleDescriptor {
+        optional string id = 1;
+        optional string label = 2;
+      }
+
+      message Position {
+        required float latitude = 1;
+        required float longitude = 2;
+        optional float bearing = 3;
+        optional float speed = 5;
+      }
+
+      message VehiclePosition {
+        optional TripDescriptor trip = 1;
+        optional VehicleDescriptor vehicle = 8;
+        optional Position position = 2;
+      }
+
+      message StopTimeEvent {
+        optional int32 delay = 1;
+        optional int64 time = 2;
+      }
+
+      message StopTimeUpdate {
+        optional uint32 stop_sequence = 1;
+        optional string stop_id = 4;
+        optional StopTimeEvent arrival = 2;
+        optional StopTimeEvent departure = 3;
+      }
+
+      message TripUpdate {
+        optional TripDescriptor trip = 1;
+        repeated StopTimeUpdate stop_time_update = 2;
+      }
+
+      message FeedEntity {
+        required string id = 1;
+        optional VehiclePosition vehicle = 4;
+        optional TripUpdate trip_update = 3;
+      }
+
+      message FeedHeader {
+        required string gtfs_realtime_version = 1;
+        optional uint64 timestamp = 3;
+      }
+
+      message FeedMessage {
+        required FeedHeader header = 1;
+        repeated FeedEntity entity = 2;
+      }
     `).root;
     return this.rtRoot;
   }

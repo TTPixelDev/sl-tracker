@@ -33,8 +33,20 @@ export default function AppV2() {
         return a === 'WAAB' ? 'WAAB' : 'SL';
     });
 
-    // Show all vehicles toggle
-    const [showAll, setShowAll] = useState(false);
+    // Show all vehicles toggle (default to true so vehicles in traffic are visible on map)
+    const [showAll, setShowAll] = useState(() => {
+        try {
+            const saved = localStorage.getItem('sl_showAll');
+            if (saved !== null) return saved === 'true';
+        } catch (e) { }
+        return true;
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('sl_showAll', String(showAll));
+        } catch (e) { }
+    }, [showAll]);
 
     // Auto-follow vehicle
     const [isFollowingVehicle, setIsFollowingVehicle] = useState(() => {
