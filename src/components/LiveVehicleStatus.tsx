@@ -214,20 +214,28 @@ const LiveVehicleStatus: React.FC<LiveVehicleStatusProps> = ({ vehicle, lineShor
                             })();
 
                             let stopName = te.stopName;
-                            let isStopReglering = Boolean(te.isReglering);
-                            if (!stopName || !isStopReglering) {
-                                for (const route of selectedRoutes) {
-                                    const found = route.stops?.find((s: any) => String(s.id) === String(te.stopId || te.s));
-                                    if (found) {
-                                        if (!stopName) stopName = found.name;
-                                        if (found.isReglering) isStopReglering = true;
-                                        break;
-                                    }
+                            let isStopReglering = false;
+
+                            // Check if stop is a designated regleringshållplats on the route
+                            const stopIdStr = String(te.stopId || te.s);
+                            let foundOnRoute = false;
+                            for (const route of selectedRoutes) {
+                                const found = route.stops?.find((s: any) => String(s.id) === stopIdStr);
+                                if (found) {
+                                    foundOnRoute = true;
+                                    if (!stopName) stopName = found.name;
+                                    isStopReglering = Boolean(found.isReglering);
+                                    break;
                                 }
                             }
 
-                            if (!isStopReglering && te.scheduledArrival && te.scheduledDeparture && te.scheduledArrival !== te.scheduledDeparture) {
-                                isStopReglering = true;
+                            // Fallback to event's recorded isReglering/reg if route stop not found
+                            if (!foundOnRoute) {
+                                if (te.isReglering !== undefined) {
+                                    isStopReglering = Boolean(te.isReglering);
+                                } else if (te.reg !== undefined) {
+                                    isStopReglering = Boolean(te.reg);
+                                }
                             }
 
                             const isLatest = i === 0;
