@@ -99,6 +99,28 @@ try {
 let cachedMongoClient: MongoClient | null = null;
 let clientConnectingPromise: Promise<MongoClient | null> | null = null;
 
+function handleDbError(err: any) {
+  if (!err) return;
+  const msg = String(err?.message || err || "").toLowerCase();
+  if (
+    msg.includes("closed") ||
+    msg.includes("topology") ||
+    msg.includes("pool") ||
+    msg.includes("timeout") ||
+    msg.includes("connection") ||
+    msg.includes("econnreset")
+  ) {
+    console.warn("Databasanslutningsfel upptäckt i API, nollställer klienten:", msg);
+    if (cachedMongoClient) {
+      try {
+        cachedMongoClient.close().catch(() => { });
+      } catch { }
+    }
+    cachedMongoClient = null;
+    clientConnectingPromise = null;
+  }
+}
+
 async function getMongoClient(): Promise<MongoClient | null> {
   const uri = process.env.MONGODB_URI;
   if (!uri) return null;
@@ -109,9 +131,9 @@ async function getMongoClient(): Promise<MongoClient | null> {
     try {
       const client = new MongoClient(uri, {
         maxPoolSize: 5,
-        connectTimeoutMS: 5000,
-        serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 15000
+        connectTimeoutMS: 6000,
+        serverSelectionTimeoutMS: 6000,
+        socketTimeoutMS: 20000
       });
       await client.connect();
       cachedMongoClient = client;
@@ -383,11 +405,21 @@ app.get("/api/trip-history", async (req, res) => {
     const client = await getMongoClient();
     if (!client) return res.status(200).json({ path: [] });
 
-    const trip = await client.db("sl-times").collection("vehicle_trails").findOne(
-      { tripId },
-      { projection: { trail: 1, _id: 0 } }
-    );
-    if (!trip || !Array.isArray(trip.trail)) return res.status(200).json({ path: [] });
+    const cleanTripId = String(tripId).trim();
+    let trip: any = null;
+    try {
+      trip = await client.db("sl-times").collection("vehicle_trails").findOne(
+        { tripId: cleanTripId },
+        { projection: { trail: 1, _id: 0 } }
+      );
+    } catch (dbErr) {
+      handleDbError(dbErr);
+      return res.status(200).json({ path: [] });
+    }
+
+    if (!trip || !Array.isArray(trip.trail) || trip.trail.length === 0) {
+      return res.status(200).json({ path: [] });
+    }
 
     const allPoints = trip.trail.sort((a: any, b: any) => a.ts - b.ts);
     let currentRunStartIndex = 0;
@@ -396,7 +428,13 @@ app.get("/api/trip-history", async (req, res) => {
         currentRunStartIndex = i;
       }
     }
-    const path = allPoints.slice(currentRunStartIndex).map((p: any) => ({
+
+    let pathPoints = allPoints.slice(currentRunStartIndex);
+    if (pathPoints.length < 2 && allPoints.length >= 2) {
+      pathPoints = allPoints.slice(-50);
+    }
+
+    const path = pathPoints.map((p: any) => ({
       lat: p.lat,
       lng: p.lng,
       ts: p.ts,
@@ -420,7 +458,14 @@ app.get("/api/trip-events", async (req, res) => {
     const client = await getMongoClient();
     if (!client) return res.status(200).json([]);
 
-    const events = await client.db("sl-times").collection("stop_events").find({ t: tripId }).sort({ ts: 1 }).toArray();
+    const cleanTripId = String(tripId).trim();
+    let events: any[] = [];
+    try {
+      events = await client.db("sl-times").collection("stop_events").find({ t: cleanTripId }).sort({ ts: 1 }).toArray();
+    } catch (dbErr) {
+      handleDbError(dbErr);
+      return res.status(200).json([]);
+    }
 
     const formatTime = (secs: any) => {
       if (secs == null || isNaN(Number(secs))) return null;
@@ -463,7 +508,9 @@ app.get("/api/status", async (_req, res) => {
         });
       }
     }
-  } catch { }
+  } catch (err) {
+    handleDbError(err);
+  }
 
   return res.status(200).json({
     online: true,

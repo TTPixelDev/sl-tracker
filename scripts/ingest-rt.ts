@@ -129,14 +129,25 @@ export async function startIngest() {
         return null;
     }
 
-    // Connect to MongoDB
+    // Connect to MongoDB with auto-reconnection
     const mongoUri = process.env.MONGODB_URI;
     let db: any = null;
-    if (mongoUri) {
+    let isConnecting = false;
+
+    async function getDb(): Promise<any> {
+        if (db) return db;
+        if (!mongoUri || isConnecting) return null;
+        isConnecting = true;
         try {
+            if (mongoClient) {
+                try {
+                    await mongoClient.close().catch(() => { });
+                } catch { }
+            }
             mongoClient = new MongoClient(mongoUri, {
                 maxPoolSize: 10,
-                connectTimeoutMS: 15000,
+                connectTimeoutMS: 10000,
+                serverSelectionTimeoutMS: 10000,
                 socketTimeoutMS: 45000
             });
             await mongoClient.connect();
@@ -156,10 +167,36 @@ export async function startIngest() {
                 db.collection("vehicle_trails").deleteMany({ expireAt: { $lt: new Date() } }).catch(() => { }),
                 db.collection("stop_events").deleteMany({ expireAt: { $lt: new Date() } }).catch(() => { })
             ]);
-        } catch (err) {
-            console.warn("MongoDB initialisering misslyckades (använder in-memory cache som fallback):", err);
+            return db;
+        } catch (err: any) {
+            console.warn("MongoDB anslutningsvarning (använder in-memory som fallback):", err?.message || err);
+            db = null;
+            mongoClient = null;
+            return null;
+        } finally {
+            isConnecting = false;
         }
     }
+
+    function handleMongoError(err: any) {
+        if (!err) return;
+        const msg = String(err?.message || err || "").toLowerCase();
+        if (
+            msg.includes("closed") ||
+            msg.includes("topology") ||
+            msg.includes("pool") ||
+            msg.includes("timeout") ||
+            msg.includes("connection") ||
+            msg.includes("econnreset")
+        ) {
+            console.warn("Databasanslutning bruten i ingest daemon, schemalägger återanslutning:", msg);
+            db = null;
+            mongoClient = null;
+        }
+    }
+
+    // Initial connect attempt
+    await getDb();
 
     // Load Protobuf definitions
     const protoRoot = await protobuf.parse(`
@@ -243,8 +280,12 @@ export async function startIngest() {
             }
 
             const [posRes, updateRes] = await Promise.all([
-                fetch(`https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/VehiclePositionsSweden.pb?key=${apiKey}`),
-                fetch(`https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/TripUpdatesSweden.pb?key=${apiKey}`)
+                fetch(`https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/VehiclePositionsSweden.pb?key=${apiKey}`, {
+                    signal: AbortSignal.timeout(10000)
+                }),
+                fetch(`https://opendata.samtrafiken.se/gtfs-rt-sweden/sl/TripUpdatesSweden.pb?key=${apiKey}`, {
+                    signal: AbortSignal.timeout(10000)
+                })
             ]);
 
             if (!posRes.ok) {
@@ -488,16 +529,21 @@ export async function startIngest() {
             }
 
             // Write batch to MongoDB
-            if (db) {
+            const currentDb = await getDb();
+            if (currentDb) {
                 if (bulkTrailOps.length > 0) {
-                    db.collection("vehicle_trails").bulkWrite(bulkTrailOps, { ordered: false }).catch(() => { });
+                    currentDb.collection("vehicle_trails").bulkWrite(bulkTrailOps, { ordered: false }).catch((e: any) => {
+                        handleMongoError(e);
+                    });
                 }
                 if (bulkStopOps.length > 0) {
-                    db.collection("stop_events").bulkWrite(bulkStopOps, { ordered: false }).catch(() => { });
+                    currentDb.collection("stop_events").bulkWrite(bulkStopOps, { ordered: false }).catch((e: any) => {
+                        handleMongoError(e);
+                    });
                 }
 
                 // Update status doc in database
-                db.collection("status").updateOne(
+                currentDb.collection("status").updateOne(
                     { _id: "ingest_status" },
                     {
                         $set: {
@@ -508,7 +554,7 @@ export async function startIngest() {
                         }
                     },
                     { upsert: true }
-                ).catch(() => { });
+                ).catch((e: any) => handleMongoError(e));
             }
 
             lastIngestStatus = {
@@ -542,9 +588,22 @@ export async function startIngest() {
         }
     }, 10 * 60 * 1000);
 
-    // Initial poll and recurring timer
-    await pollRealtime();
-    setInterval(pollRealtime, 3500);
+    // Non-overlapping recurring poll cycle
+    let isPolling = false;
+    async function runCycle() {
+        if (isPolling) return;
+        isPolling = true;
+        try {
+            await pollRealtime();
+        } catch (err: any) {
+            console.error("Fel i realtidsingest-cykel:", err?.message || err);
+        } finally {
+            isPolling = false;
+        }
+    }
+
+    await runCycle();
+    setInterval(runCycle, 3500);
 }
 
 // Helpers for API endpoints
@@ -610,7 +669,17 @@ export function getIngestStatus() {
     return lastIngestStatus;
 }
 
+// Global process-level safety so Ubuntu systemd service NEVER terminates on unhandled errors
+process.on("unhandledRejection", (reason) => {
+    console.error("Ohanterat löfte i ingest daemon (tjänsten fortsätter köra):", reason);
+});
+process.on("uncaughtException", (err) => {
+    console.error("Ohanterat undantag i ingest daemon (tjänsten fortsätter köra):", err);
+});
+
 // Allow direct CLI execution: tsx scripts/ingest-rt.ts
-if (process.argv[1] && process.argv[1].endsWith("ingest-rt.ts")) {
-    startIngest().catch(console.error);
+if (process.argv[1] && (process.argv[1].includes("ingest-rt") || process.argv[1].includes("ingest"))) {
+    startIngest().catch((err) => {
+        console.error("Kunde inte starta ingest:", err);
+    });
 }

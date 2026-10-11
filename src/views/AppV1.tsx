@@ -235,18 +235,20 @@ export default function AppV1() {
     }, [selectedVehicleId, vehicles, selectedRoutes]);
 
     // Poll vehicle trail and stop events for currently selected vehicle
+    const selectedVehicleTripId = useMemo(() => {
+        if (!selectedVehicleId) return null;
+        return vehicles.find(x => x.id === selectedVehicleId)?.tripId || null;
+    }, [selectedVehicleId, vehicles]);
+
     useEffect(() => {
-        if (!selectedVehicleId) {
+        if (!selectedVehicleId || !selectedVehicleTripId) {
             setHistory([]);
             setTripEvents([]);
             activeTripIdRef.current = null;
             return;
         }
 
-        const vehicle = vehicles.find(x => x.id === selectedVehicleId);
-        if (!vehicle || !vehicle.tripId) return;
-
-        const tripId = vehicle.tripId;
+        const tripId = selectedVehicleTripId;
         activeTripIdRef.current = tripId;
 
         let isMounted = true;
@@ -271,7 +273,7 @@ export default function AppV1() {
             isMounted = false;
             clearInterval(interval);
         };
-    }, [selectedVehicleId, vehicles]);
+    }, [selectedVehicleId, selectedVehicleTripId]);
 
     const stopPassages = useMemo(() => {
         if (!selectedVehicleId || selectedRoutes.length === 0 || (history.length === 0 && (!tripEvents || tripEvents.length === 0))) return new Map();
