@@ -96,12 +96,37 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
         return (Number(parts[0]) >= 24 ? Number(parts[0]) - 24 : Number(parts[0])) * 3600 + (Number(parts[1]) || 0) * 60 + (Number(parts[2]) || 0);
     };
 
-    const getDiff = (sched?: string | number, act?: string | number) => {
+    const getDiff = (teOrSched?: any, act?: string | number) => {
+        // 1. Direct delay in seconds from GTFS-RT event
+        if (typeof teOrSched === 'object' && teOrSched !== null) {
+            if (teOrSched.delay !== undefined && teOrSched.delay !== null) {
+                const diffMin = Math.round(Number(teOrSched.delay) / 60);
+                if (Math.abs(diffMin) < 1) return { text: 'I tid', color: 'text-emerald-400 font-bold' };
+                if (diffMin > 0) return { text: `+${diffMin}`, color: 'text-rose-400 font-bold' };
+                return { text: `${diffMin}`, color: 'text-sky-400 font-bold' };
+            }
+            return getDiff(teOrSched.scheduledDeparture || teOrSched.sd, teOrSched.actualDeparture || teOrSched.ad);
+        }
+
+        const sched = teOrSched;
         if (!sched || !act) return null;
         let diffSec = toSec(act) - toSec(sched);
         if (diffSec < -43200) diffSec += 86400;
         else if (diffSec > 43200) diffSec -= 86400;
         const diffMin = Math.round(diffSec / 60);
+
+        // Sanity check: If diff > 45 minutes, it is comparing against a mismatched static trip.
+        // Fall back to the bus's live delay!
+        if (Math.abs(diffMin) > 45) {
+            if (vehicle.delay !== undefined && vehicle.delay !== null) {
+                const vMin = Math.round(Number(vehicle.delay) / 60);
+                if (Math.abs(vMin) < 1) return { text: 'I tid', color: 'text-emerald-400 font-bold' };
+                if (vMin > 0) return { text: `+${vMin}`, color: 'text-rose-400 font-bold' };
+                return { text: `${vMin}`, color: 'text-sky-400 font-bold' };
+            }
+            return null;
+        }
+
         if (Math.abs(diffMin) < 1) return { text: 'I tid', color: 'text-emerald-400 font-bold' };
         if (diffMin > 0) return { text: `+${diffMin}`, color: 'text-rose-400 font-bold' };
         return { text: `${diffMin}`, color: 'text-sky-400 font-bold' };
@@ -204,7 +229,7 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
                 {tripEvents && tripEvents.length > 0 ? (
                     <div className="relative pl-4 space-y-3.5 before:absolute before:left-[4px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-700/80">
                         {[...tripEvents].reverse().map((te, i) => {
-                            const stopDiff = getDiff(te.scheduledDeparture || te.sd, te.actualDeparture || te.ad);
+                            const stopDiff = getDiff(te);
                             const isTeStopped = (() => {
                                 if (te.stopped !== undefined && te.stopped !== null) return Boolean(te.stopped);
                                 if (te.st !== undefined && te.st !== null) return Boolean(te.st);

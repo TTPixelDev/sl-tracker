@@ -38,8 +38,9 @@ interface IngestStopEvent {
     st: boolean; // stopped
     aa: number | null; // actual arrival secs of day
     ad: number | null; // actual departure secs of day
-    sa: number | null; // scheduled arrival mins of day
-    sd: number | null; // scheduled departure mins of day
+    sa: number | null; // scheduled arrival secs of day
+    sd: number | null; // scheduled departure secs of day
+    delay?: number; // delay in seconds at stop passage
     reg: boolean; // isReglering
     expireAt: Date;
 }
@@ -460,8 +461,15 @@ export async function startIngest() {
 
                                 // Check or create event
                                 let existingEv = tripStopsMap.get(stopIdStr);
-                                const schedArr = timeStringToMinutes(stop.scheduledArrival);
-                                const schedDep = timeStringToMinutes(stop.scheduledDeparture);
+
+                                // Get real-time delay for this specific stop from TripUpdate
+                                const stopUpdate = tripUpdatesMap.get(tripId)?.stopUpdates?.find((u: any) => String(u.stopId || u.stop_id) === stopIdStr);
+                                const currentDelaySec = stopUpdate?.departure?.delay ?? stopUpdate?.arrival?.delay ?? delay ?? 0;
+
+                                // Accurate scheduled seconds for THIS trip: actual time minus real-time delay
+                                let calculatedSchedSecs = currentSecsOfDay - currentDelaySec;
+                                if (calculatedSchedSecs < 0) calculatedSchedSecs += 86400;
+                                else if (calculatedSchedSecs >= 86400) calculatedSchedSecs -= 86400;
 
                                 if (!existingEv) {
                                     const stopped = isSlow || (existingDwell ? now - existingDwell.enterTime >= 15000 : false);
@@ -475,8 +483,9 @@ export async function startIngest() {
                                         st: stopped,
                                         aa: currentSecsOfDay,
                                         ad: currentSecsOfDay,
-                                        sa: schedArr,
-                                        sd: schedDep,
+                                        sa: calculatedSchedSecs,
+                                        sd: calculatedSchedSecs,
+                                        delay: currentDelaySec,
                                         reg: Boolean(stop.isReglering),
                                         expireAt: expireDate
                                     };
@@ -499,6 +508,10 @@ export async function startIngest() {
                                     existingEv.ad = currentSecsOfDay;
                                     existingEv.ts = now;
                                     existingEv.expireAt = expireDate;
+                                    if (currentDelaySec !== undefined) {
+                                        existingEv.delay = currentDelaySec;
+                                        existingEv.sd = calculatedSchedSecs;
+                                    }
 
                                     if (changed || Math.abs(currentSecsOfDay - (existingEv.ad || 0)) >= 5) {
                                         bulkStopOps.push({
@@ -508,6 +521,8 @@ export async function startIngest() {
                                                     $set: {
                                                         st: existingEv.st,
                                                         ad: existingEv.ad,
+                                                        sd: existingEv.sd,
+                                                        delay: existingEv.delay,
                                                         ts: now,
                                                         expireAt: expireDate
                                                     }
@@ -636,10 +651,11 @@ export async function getTripStopEvents(tripId: string): Promise<any[]> {
             stopName: e.stopName,
             stopped: e.st,
             isReglering: e.reg,
+            delay: e.delay,
             actualArrival: formatSecondsToTime(e.aa),
             actualDeparture: formatSecondsToTime(e.ad),
-            scheduledArrival: formatSecondsToTime(e.sa !== null ? e.sa * 60 : null),
-            scheduledDeparture: formatSecondsToTime(e.sd !== null ? e.sd * 60 : null)
+            scheduledArrival: formatSecondsToTime(e.sa),
+            scheduledDeparture: formatSecondsToTime(e.sd)
         }));
     }
 
@@ -653,10 +669,11 @@ export async function getTripStopEvents(tripId: string): Promise<any[]> {
                     stopName: e.stopName || e.dn || "",
                     stopped: Boolean(e.st),
                     isReglering: Boolean(e.reg),
+                    delay: e.delay,
                     actualArrival: formatSecondsToTime(e.aa),
                     actualDeparture: formatSecondsToTime(e.ad),
-                    scheduledArrival: formatSecondsToTime(e.sa !== null ? (e.sa > 3600 ? e.sa : e.sa * 60) : null),
-                    scheduledDeparture: formatSecondsToTime(e.sd !== null ? (e.sd > 3600 ? e.sd : e.sd * 60) : null)
+                    scheduledArrival: formatSecondsToTime(e.sa != null ? (e.sa > 86400 ? e.sa % 86400 : (e.sa > 3600 ? e.sa : e.sa * 60)) : null),
+                    scheduledDeparture: formatSecondsToTime(e.sd != null ? (e.sd > 86400 ? e.sd % 86400 : (e.sd > 3600 ? e.sd : e.sd * 60)) : null)
                 }));
             }
         } catch { }

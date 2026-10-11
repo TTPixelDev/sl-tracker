@@ -481,10 +481,11 @@ app.get("/api/trip-events", async (req, res) => {
       stopName: e.stopName || e.dn || "",
       stopped: Boolean(e.st),
       isReglering: Boolean(e.reg),
+      delay: e.delay,
       actualArrival: formatTime(e.aa),
       actualDeparture: formatTime(e.ad),
-      scheduledArrival: formatTime(e.sa != null ? (e.sa > 3600 ? e.sa : e.sa * 60) : null),
-      scheduledDeparture: formatTime(e.sd != null ? (e.sd > 3600 ? e.sd : e.sd * 60) : null)
+      scheduledArrival: formatTime(e.sa != null ? (e.sa > 86400 ? e.sa % 86400 : (e.sa > 3600 ? e.sa : e.sa * 60)) : null),
+      scheduledDeparture: formatTime(e.sd != null ? (e.sd > 86400 ? e.sd % 86400 : (e.sd > 3600 ? e.sd : e.sd * 60)) : null)
     })));
   } catch (e: any) {
     return res.status(200).json([]);
