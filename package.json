@@ -12,7 +12,7 @@
     "lint": "tsc --noEmit",
     "download": "tsx scripts/download-gtfs.ts",
     "process": "tsx scripts/process-gtfs.ts",
-    "update": "npm run download-gtfs && npm run process-gtfs",
+    "update": "npm run download && npm run process",
     "ingest": "tsx scripts/ingest-rt.ts"
   },
   "dependencies": {
